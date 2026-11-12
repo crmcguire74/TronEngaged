@@ -1,0 +1,49 @@
+import type { EnemySpawn, TierDefinition } from '../types';
+
+type P = Record<string, number | string>;
+const e = (type: string, count: number, difficulty: number): EnemySpawn => ({ type, count, difficulty });
+const ENV = ['classic-stadium', 'vertical-chamber', 'data-core', 'fractured-lattice', 'corruption-zone', 'grand-colosseum'];
+let n = 0;
+function tier(name: string, brief: string, enemies: EnemySpawn[], modifiers: string[], params: P, extra: Partial<TierDefinition> = {}): TierDefinition {
+  n++;
+  return { id: n, mode: 'discs', name, brief, environment: ENV[Math.floor((n - 1) / 5)], enemies, modifiers, objective: extra.boss ? 'defeat-boss' : 'eliminate-all-enemies', unlocks: [], params: { playerPlatforms: 1, enemyPlatforms: 1, heights: 'flat', maxAttackers: 1, discSpeed: 1, ...params }, scoreMul: 1 + (n - 1) * 0.08, ...extra };
+}
+
+/** 30 authored Disc Arena tiers. Every fifth tier changes arena design, enemy behaviour or mechanics. */
+export const DISC_TIERS: readonly TierDefinition[] = [
+  tier('Initialization', 'One Sentinel, one platform. Aim, throw, catch.', [e('sentinel', 1, 0.1)], [], {}),
+  tier('Second Footing', 'Two platforms a side. Jump toward the other platform to hop across, and keep both Sentinels guessing.', [e('sentinel', 2, 0.15)], [], { playerPlatforms: 2, enemyPlatforms: 2, heights: 'flat' }),
+  tier('Quickdraw', 'A gold Striker: fast, evasive, throws in pairs. Raise your shield at the last instant to parry a disc straight back.', [e('striker', 1, 0.22), e('sentinel', 1, 0.25)], [], { playerPlatforms: 2, enemyPlatforms: 2, heights: 'flat', discSpeed: 1.1 }),
+  tier('Elevation', 'Platforms at different heights. Hop between them and aim up or down at a mixed pair.', [e('sentinel', 1, 0.35), e('striker', 1, 0.3)], [], { playerPlatforms: 2, enemyPlatforms: 3, heights: 'steps' }, { unlocks: ['trail:amber'] }),
+  tier('First Guardian', 'A shield-bearer. Head-on throws are blocked: wait for it to throw, then strike, or flank it from your other platform.', [e('boss-guardian', 1, 0.45)], ['cover'], { playerPlatforms: 2, enemyPlatforms: 2, heights: 'flat' }, { boss: 'boss-guardian', unlocks: ['skin:cobalt'] }),
+
+  tier('Reflection', 'A barrier blocks the direct line, and a green Ricochet Specialist knows it. Bank your disc off the angled panels and the chamber walls.', [e('ricochet', 1, 0.3)], ['midwall'], {}),
+  tier('Crossfire', 'Two rivals throwing at once. Keep moving.', [e('sentinel', 2, 0.45)], ['crossfire'], { playerPlatforms: 2, enemyPlatforms: 2, heights: 'steps', maxAttackers: 2 }),
+  tier('Moving Grid', 'Rival platforms drift. Lead your throws.', [e('sentinel', 1, 0.5), e('striker', 1, 0.4)], ['moving-platforms'], { playerPlatforms: 2, enemyPlatforms: 3, heights: 'steps', maxAttackers: 2 }),
+  tier('Homing Threat', 'A pink Hunter throws tracking discs. Dodge late, or break line of sight behind the barriers until they shatter.', [e('hunter', 1, 0.5), e('sentinel', 1, 0.45)], ['homing', 'cover', 'barriers'], { playerPlatforms: 2, enemyPlatforms: 2, heights: 'steps', barriers: 2, maxAttackers: 2 }),
+  tier('The Enforcer', 'Three phases. It calls reinforcements, then electrifies your platform.', [e('boss-enforcer', 1, 0.55)], ['cover'], { playerPlatforms: 2, enemyPlatforms: 3, heights: 'steps', maxAttackers: 2 }, { boss: 'boss-enforcer', unlocks: ['arena:vertical-chamber', 'trail:violet'] }),
+
+  tier('Velocity', 'Strikers throw fast and in pairs. Dodge has brief immunity.', [e('striker', 2, 0.55)], [], { playerPlatforms: 2, enemyPlatforms: 3, heights: 'flat', maxAttackers: 2, discSpeed: 1.25 }),
+  tier('Platform Collapse', 'Platforms drop out on a timer. Watch the warning and jump.', [e('sentinel', 2, 0.55), e('striker', 1, 0.5)], ['collapsing'], { playerPlatforms: 3, enemyPlatforms: 3, heights: 'flat', maxAttackers: 2 }),
+  tier('Triad', 'Three coordinated rivals with different habits.', [e('sentinel', 1, 0.6), e('striker', 1, 0.6), e('ricochet', 1, 0.55)], ['crossfire'], { playerPlatforms: 3, enemyPlatforms: 3, heights: 'steps', maxAttackers: 2 }),
+  tier('Ricochet Mastery', 'Nothing has a clear line. Everything is a bank shot.', [e('ricochet', 2, 0.65)], ['midwall', 'cover'], { playerPlatforms: 2, enemyPlatforms: 3, heights: 'flat', maxAttackers: 2 }),
+  tier('Guardian Core', 'Two Guardians behind rotating shields.', [e('guardian', 2, 0.62)], ['rotating-shields', 'cover'], { playerPlatforms: 3, enemyPlatforms: 3, heights: 'steps', rotating: 2, maxAttackers: 2 }, { unlocks: ['arena:data-core', 'skin:ivory'] }),
+
+  tier('System Interference', 'A Disruptor jams platform transfers. Eliminate it first.', [e('disruptor', 1, 0.6), e('sentinel', 2, 0.6)], ['interference'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', maxAttackers: 2 }),
+  tier('Vertical Assault', 'A tall arena. Rivals attack from above and below.', [e('striker', 2, 0.65), e('ricochet', 1, 0.65)], [], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'vertical', maxAttackers: 2 }),
+  tier('Hunter Swarm', 'Three trackers. Use cover and parry the discs back.', [e('hunter', 3, 0.65)], ['homing', 'cover', 'barriers'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', barriers: 2, maxAttackers: 2 }),
+  tier('Shifting Arena', 'The layout re-forms mid-fight behind a rotating shield.', [e('striker', 1, 0.7), e('guardian', 1, 0.68), e('ricochet', 1, 0.68)], ['shifting', 'rotating-shields'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', rotating: 1, maxAttackers: 2 }),
+  tier('The Architect', 'It rebuilds the arena around you. Each phase changes the topology.', [e('boss-architect', 1, 0.7)], ['cover'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', maxAttackers: 2, shiftCapable: 1, collapseLater: 1 }, { boss: 'boss-architect', unlocks: ['arena:fractured-lattice', 'trail:jade'] }),
+
+  tier('Corrupted Grid', 'Volatile nodes and energy surges. Hazards hurt everyone.', [e('striker', 2, 0.72), e('hunter', 1, 0.7)], ['energy-surge', 'volatile'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', volatile: 3, maxAttackers: 2 }),
+  tier('Discipline', 'Two discs, less shield. Every throw must count.', [e('guardian', 1, 0.75), e('striker', 2, 0.72)], ['discipline', 'cover'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', maxAttackers: 2, playerDiscs: 2, shieldMul: 0.7 }),
+  tier('Siege', 'Four coordinated opponents led by a Commander.', [e('commander', 1, 0.75), e('guardian', 1, 0.72), e('striker', 1, 0.75), e('ricochet', 1, 0.75)], ['crossfire', 'cover'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'steps', maxAttackers: 3 }),
+  tier('Chain Reaction', 'Volatile nodes detonate in chains. Collapse their footing.', [e('sentinel', 2, 0.75), e('striker', 2, 0.75)], ['volatile', 'barriers', 'energy-surge'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'flat', volatile: 4, barriers: 3, maxAttackers: 3 }),
+  tier('The Overseer', 'Four phases: escorts, interference, a shifting arena, then a last stand.', [e('boss-overseer', 1, 0.8)], ['cover'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'steps', maxAttackers: 3, shiftCapable: 1 }, { boss: 'boss-overseer', unlocks: ['arena:corruption-zone', 'skin:crimson'] }),
+
+  tier('Unstable Reality', 'The arena transforms mid-fight, repeatedly.', [e('hunter', 1, 0.8), e('striker', 1, 0.82), e('disruptor', 1, 0.78)], ['rapid-shift', 'collapsing'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'steps', maxAttackers: 2 }),
+  tier('Elite Formation', 'Five specialists, each covering another\'s weakness.', [e('commander', 1, 0.85), e('guardian', 1, 0.82), e('striker', 1, 0.85), e('hunter', 1, 0.82), e('ricochet', 1, 0.85)], ['crossfire', 'cover'], { playerPlatforms: 3, enemyPlatforms: 6, heights: 'vertical', maxAttackers: 3 }),
+  tier('System Collapse', 'Rapid topology changes, collapsing platforms and surges together.', [e('striker', 2, 0.86), e('ricochet', 1, 0.86), e('disruptor', 1, 0.84)], ['rapid-shift', 'collapsing', 'energy-surge'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'steps', maxAttackers: 3 }),
+  tier('Final Protocol', 'An elite gauntlet in three waves.', [e('striker', 2, 0.88), e('guardian', 1, 0.86)], ['crossfire', 'cover', 'rotating-shields'], { playerPlatforms: 3, enemyPlatforms: 6, heights: 'vertical', rotating: 1, maxAttackers: 3 }, { waves: [[e('hunter', 2, 0.88), e('ricochet', 1, 0.9), e('disruptor', 1, 0.86)], [e('commander', 1, 0.92), e('guardian', 1, 0.9), e('striker', 2, 0.9)]] }),
+  tier('Prime Kernel', 'The final authored encounter. Five phases.', [e('boss-prime', 1, 0.92)], ['cover'], { playerPlatforms: 3, enemyPlatforms: 6, heights: 'steps', maxAttackers: 3, shiftCapable: 1, collapseLater: 1 }, { boss: 'boss-prime', unlocks: ['arena:grand-colosseum', 'endless:discs', 'trail:prism'] }),
+];

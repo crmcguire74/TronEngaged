@@ -1,0 +1,28 @@
+<!doctype html><html><body style="margin:0;background:#111;overflow:hidden"><pre id="o" style="position:fixed;left:8px;top:8px;color:#9f9;font:11px monospace;margin:0;white-space:pre-wrap;max-width:60vw"></pre>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+const q = new URLSearchParams(location.search); const file = q.get('f'); const anim = q.get('a'); const view = q.get('v') || 'iso';
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+r.toneMapping = THREE.ACESFilmicToneMapping;
+const s = new THREE.Scene(); s.background = new THREE.Color(0x1a1c22);
+s.add(new THREE.HemisphereLight(0xffffff, 0x333344, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 2.5); d.position.set(3, 6, 4); s.add(d);
+const c = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 5000);
+const l = new GLTFLoader(); l.setMeshoptDecoder(MeshoptDecoder);
+let mixer; const clock = new THREE.Clock();
+l.load('/game-assets/' + file, (g) => {
+  s.add(g.scene); g.scene.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(g.scene); const sz = b.getSize(new THREE.Vector3()), ct = b.getCenter(new THREE.Vector3());
+  const names = []; g.scene.traverse(o => { if (names.length < 40 && (o.isMesh || o.children.length)) names.push((o.isSkinnedMesh ? 'SK:' : o.isMesh ? 'M:' : 'G:') + o.name); });
+  window.__info = { size: sz.toArray().map(v => +v.toFixed(3)), min: b.min.toArray().map(v => +v.toFixed(3)), max: b.max.toArray().map(v => +v.toFixed(3)), anims: g.animations.map(a => a.name + ':' + a.duration.toFixed(2)), names };
+  document.getElementById('o').textContent = JSON.stringify(window.__info);
+  const R = Math.max(sz.x, sz.y, sz.z);
+  const dirs = { iso: [1, 0.6, 1], eye: [0, 0, 1], rear: [-0.5, 0.5, -1], front: [0, 0.2, 1], back: [0, 0.2, -1], side: [1, 0.2, 0], top: [0, 1, 0.01], in: [0, 0, 0] };
+  const dv = new THREE.Vector3(...dirs[view]).normalize();
+  if (view === 'eye') { c.fov = 80; c.updateProjectionMatrix(); c.position.set(0, 1.27, -0.2); c.lookAt(0, 1.0, 2); } else if (view === 'in') { c.position.copy(ct); c.position.y = b.min.y + sz.y * 0.25; c.lookAt(ct.x + 1, c.position.y, ct.z + 1); } else { c.position.copy(ct).addScaledVector(dv, R * 1.5); c.lookAt(ct); }
+  s.add(new THREE.AxesHelper(R * 0.6));
+  if (g.animations.length) { mixer = new THREE.AnimationMixer(g.scene); const clip = g.animations.find(a => a.name === anim) || g.animations.find(a => a.name === 'Idle') || g.animations[0]; mixer.clipAction(clip).play(); }
+  r.setAnimationLoop(() => { mixer?.update(clock.getDelta()); r.render(s, c); });
+});
+</script></body></html>

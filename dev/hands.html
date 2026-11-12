@@ -1,0 +1,29 @@
+<!doctype html><html><body style="margin:0;background:#111;overflow:hidden">
+<script type="module">
+// Dev preview for the VR glove hands: ?m=cockpit (hands on the bar grips, rider's eye view) or ?m=free (tracked-hand pose with disc). &k=curl
+import * as THREE from 'three';
+import { Assets } from '/src/engine/assets.ts';
+import { GloveHand } from '/src/engine/hands.ts';
+const q = new URLSearchParams(location.search), mode = q.get('m') || 'free', k = Number(q.get('k') ?? 0.25), view = q.get('v') || 'eye';
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement); r.toneMapping = THREE.ACESFilmicToneMapping;
+const s = new THREE.Scene(); s.background = new THREE.Color(0x20242c); s.add(new THREE.HemisphereLight(0xffffff, 0x333344, 2.4)); const d = new THREE.DirectionalLight(0xffffff, 2.5); d.position.set(2, 6, -3); s.add(d);
+const c = new THREE.PerspectiveCamera(mode === 'cockpit' ? 95 : 60, innerWidth / innerHeight, 0.01, 100);
+const assets = new Assets(); await assets.load(['hands', 'cockpit', 'disc:azure']);
+if (mode === 'cockpit') {
+  const cp = assets.instance('cockpit').root; s.add(cp);
+  for (const sx of [1, -1]) { const g = new GloveHand(assets, sx > 0 ? 'left' : 'right'), a = new THREE.Vector3(sx * 0.33, 1.005, 0.17), b = new THREE.Vector3(sx * 0.4, 0.978, 0.075);
+    const along = a.clone().sub(b).normalize(), fwd = new THREE.Vector3(0, 0.12, 1).normalize(), fingers = fwd.clone().addScaledVector(along, -fwd.dot(along)).normalize().add(fwd).normalize();
+    g.gripBar(a.clone().lerp(b, 0.5), fingers, along); if (q.has('k')) g.pose(k); cp.add(g.root);
+    const wrist = g.root.position.clone().addScaledVector(fingers, -0.1), elbow = new THREE.Vector3(sx * 0.31, 0.93, -0.34), len = wrist.distanceTo(elbow);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.041, 0.054, len, 14), new THREE.MeshStandardMaterial({ color: 0x0b0e15, roughness: 0.5, metalness: 0.4 })); arm.position.copy(wrist).lerp(elbow, 0.5); arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), wrist.clone().sub(elbow).normalize()); cp.add(arm); }
+  if (view === 'eye') { c.position.set(0, 1.27, -0.2); c.lookAt(0, 0.8, 0.5); } else if (view === 'top') { c.fov = 50; c.updateProjectionMatrix(); c.position.set(0, 2.2, 0.1); c.lookAt(0, 1, 0.12); } else { c.fov = 40; c.updateProjectionMatrix(); c.position.set(1.1, 1.3, -0.5); c.lookAt(0.3, 1.0, 0.12); }
+} else {
+  for (const side of ['left', 'right']) {
+    const g = new GloveHand(assets, side); g.pose(k); const holder = new THREE.Group(); holder.position.set(side === 'left' ? -0.16 : 0.16, -0.12, -0.42); holder.add(g.root); g.root.position.set(0, -0.025, 0.085); s.add(holder);
+    holder.add(new THREE.AxesHelper(0.05));
+    if (side === 'right') { const disc = assets.instance('disc:azure').root; disc.position.set(-0.02, 0.05, -0.19); disc.rotation.set(0, 0, Math.PI / 2); g.root.add(disc); }
+  }
+  if (view === 'eye') { c.position.set(0, 0, 0); c.lookAt(0, -0.12, -0.42); } else { c.position.set(0.7, 0.1, -0.42); c.lookAt(0, -0.12, -0.42); }
+}
+r.setAnimationLoop(() => r.render(s, c)); r.render(s, c);
+</script></body></html>

@@ -1,0 +1,374 @@
+{
+  "generatedBy": "tools/stage_audio.py",
+  "clips": {
+    "crowd_cheer": [
+      {
+        "file": "./assets/audio/crowd_cheer_strong.m4a",
+        "duration": 14.0,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 04 - Strong cheering - II - Short.mp3",
+        "sourceSha256": "10878a490dd3f1af7877a23c33baca143a3f86f91112c5dfb59dcf83cc94e975",
+        "outputSha256": "2b0cb83fa98ec2f4a925811fb654038800054aa371dc9c4f90b3c2b28b090105",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 96 kbps, 2 ch; content unedited"
+      },
+      {
+        "file": "./assets/audio/crowd_cheer_strong2.m4a",
+        "duration": 25.0,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 03 - Strong cheering - I.mp3",
+        "sourceSha256": "3aff86987fd73a322ddea3230455c460a2825a40b80915967d70a80f35f0409a",
+        "outputSha256": "3c1bf141a32fef7b5dfe7c473546f359400fbefb31ddccca11f51fbac48ce560",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 96 kbps, 2 ch; content unedited"
+      }
+    ],
+    "crowd_soft": [
+      {
+        "file": "./assets/audio/crowd_cheer_soft.m4a",
+        "duration": 15.0,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 06 - Soft cheering - II.mp3",
+        "sourceSha256": "a756afcff10998f6640924d850ca333ef9aa2f2af8201b41d6b7632708711e78",
+        "outputSha256": "8cd569fd83455f6a75760b89f1773c35a540ef0ffb750b534f56e0694aee234b",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 96 kbps, 2 ch; content unedited"
+      }
+    ],
+    "crowd_bed": [
+      {
+        "file": "./assets/audio/crowd_bed_ambience.m4a",
+        "duration": 34.0,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 10 - Ambience.mp3",
+        "sourceSha256": "1eea7277ed831fd38059f5b118c15b77a54ebd305dd3a8e797f9c67289a61ae9",
+        "outputSha256": "e81cd7b1f913dddbb2e55d0f3ab12a12755500c3fef08718ab7bc3ba7afb44ef",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 80 kbps, 2 ch; content unedited"
+      },
+      {
+        "file": "./assets/audio/crowd_bed_chatter.m4a",
+        "duration": 38.5,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 07 - Soft cheering and chatter.mp3",
+        "sourceSha256": "fdabfb2b98f934b04c0fd43ec4756fb386f9c283f00c5aa3ac61a31487e2fa79",
+        "outputSha256": "058ac05b6bad71a77120b43e96eea6c503f121e44a9c3f53a8f4e3c552934a11",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 80 kbps, 2 ch; content unedited"
+      }
+    ],
+    "crowd_chant": [
+      {
+        "file": "./assets/audio/crowd_chant_rhythmic.m4a",
+        "duration": 18.0,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 08 - Rhythmic cheering.mp3",
+        "sourceSha256": "0f29aae919e07c46a20f04ffa511e7ddb87a0541a4f15acb0c4647204bf26c59",
+        "outputSha256": "118370601f05e0de919f6f80daa2180c21a192971fe2aca550b32a1766540809",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 96 kbps, 2 ch; content unedited"
+      },
+      {
+        "file": "./assets/audio/crowd_chant_strong.m4a",
+        "duration": 40.0,
+        "title": "Free Crowd Cheering Sounds",
+        "author": "Gregor Quendel",
+        "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+        "licence": "CC-BY 4.0",
+        "source": "Audio Sources/gregor_quendel_crowd_cheering/Gregor Quendel - Crowd Cheering Sounds - 01 - Strong cheering and strong rhythmic cheering.mp3",
+        "sourceSha256": "fff90896c3a70f31e378d3fd9c225262a292dde8a5823c7abc02cc92de584ddd",
+        "outputSha256": "0faf7dae9d9c334572c2b2c035949d933542dda26e65c37ef57ad0472050e949",
+        "archive": "downloads/gregor_quendel_crowd_cheering_mp3.zip",
+        "modifications": "re-encoded to AAC 96 kbps, 2 ch; content unedited"
+      }
+    ],
+    "vo_fight": [
+      {
+        "file": "./assets/audio/vo_fight.m4a",
+        "duration": 0.93,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/fight.ogg",
+        "sourceSha256": "fc16c61cd474da6c80fffe34fb3bfcee79b754fcc345bd916b0e66a826695e89",
+        "outputSha256": "b53b285022246d26a65f682c87cf89dced729ee310522e0a469bc334ef1011d1",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_begin": [
+      {
+        "file": "./assets/audio/vo_begin.m4a",
+        "duration": 1.223,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/begin.ogg",
+        "sourceSha256": "d08e8bad2146c61d4431d0e5d8f6cf039417dba3ab0f5c4b63ac5360ef4b9904",
+        "outputSha256": "6706364e68e84735be593cad165a3cbfaa77b81e5d0fbdbbe5f5d19773982d64",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_final_round": [
+      {
+        "file": "./assets/audio/vo_final_round.m4a",
+        "duration": 1.692,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/final_round.ogg",
+        "sourceSha256": "ae0a2e59669888e6ec93d8b061c91267895a18c29fb5045572cb25e2792bdc90",
+        "outputSha256": "17dfa597eccb0c32d7b0252ca3fe646667706b42b84a993cacf52a0ff7fe31f3",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_tie": [
+      {
+        "file": "./assets/audio/vo_its_a_tie.m4a",
+        "duration": 1.345,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/it's_a_tie.ogg",
+        "sourceSha256": "0ef08cd681459052e4173da5f5aa479a77040d9e1ce38c8e09f9f9ca0a806989",
+        "outputSha256": "3b40e85a90ab1a7811acbb300154ea54c952c45edd6ad87c663241b3a5776c83",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_flawless": [
+      {
+        "file": "./assets/audio/vo_flawless_victory.m4a",
+        "duration": 1.868,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/flawless_victory.ogg",
+        "sourceSha256": "70d80e1bdd30649edd17419e6f8cddc9c69694b4c9a4890d132e40c65bc91a5b",
+        "outputSha256": "45a74cc5e36f76bac916f94ad3040a22eb6c2acc9adbbe571b3ad737d0271fd9",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "jeer_intro": [
+      {
+        "file": "./assets/audio/jeer_prepare_yourself.m4a",
+        "duration": 1.692,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/prepare_yourself.ogg",
+        "sourceSha256": "220a1dc842b4ff3ed42d449d1b2ef059c928f55ec0cd56c162bda470ea96938f",
+        "outputSha256": "a8a6a04db6d5fc3900b2ab2b365c037c145b5234426b8e4444a4d5149ff01d6e",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "jeer_win": [
+      {
+        "file": "./assets/audio/jeer_loser.m4a",
+        "duration": 1.446,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/loser.ogg",
+        "sourceSha256": "af51b89318e8a99e9c276ac4ab2043ef20b735178e7499492a1dfc9eff9218c0",
+        "outputSha256": "f84a2edc5969328027b3039ed06cd20ebadc6106577a83aa14eae99939cd27b7",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_round_1": [
+      {
+        "file": "./assets/audio/vo_round_1.m4a",
+        "duration": 1.354,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/round_1.ogg",
+        "sourceSha256": "cb553cdc365409f927a659088ff08a47bcc20a20a4a113ac1a0e8d325b394df7",
+        "outputSha256": "dd5840cd9b7adc4857a390970410e717ac2097ac52314f6277cd89174dfccc09",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_round_2": [
+      {
+        "file": "./assets/audio/vo_round_2.m4a",
+        "duration": 1.453,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/round_2.ogg",
+        "sourceSha256": "0ab798f390fcdbc58d5062fdac62ded70191ce20a7d459d2c78309ce6912408d",
+        "outputSha256": "b36f7fd864c72e3e92cecebd9c97697504420b7ec26bd77bdaa6919a253c60a6",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_round_3": [
+      {
+        "file": "./assets/audio/vo_round_3.m4a",
+        "duration": 1.515,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/round_3.ogg",
+        "sourceSha256": "1c5e74232f32dbe3e28556e17f485badaed777f0961b0f688523757ee59494b9",
+        "outputSha256": "ccaa474cf6ae36c390287d465df2bb0f8b15679dfeeeff73318f7cfb036c0730",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_round_4": [
+      {
+        "file": "./assets/audio/vo_round_4.m4a",
+        "duration": 1.707,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/round_4.ogg",
+        "sourceSha256": "77f821add1c100e0149bb0b86fdbe0410fcb7a37adc3b6cda79970cfa49daf0e",
+        "outputSha256": "c67a09bc31e793906b0485f31326a4c9c2a418af452049735008795b85ff703e",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_round_5": [
+      {
+        "file": "./assets/audio/vo_round_5.m4a",
+        "duration": 1.638,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/round_5.ogg",
+        "sourceSha256": "9f20a3a037d2937f8ac43727b9a68b416ddb66a27c976f26e72ed0ad9c9b4943",
+        "outputSha256": "8a25f859f45402d8fdc833443d25543410d0d6aec2c8bcb9eddbe958e4d05587",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_ready": [
+      {
+        "file": "./assets/audio/vo_ready.m4a",
+        "duration": 1.031,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/ready.ogg",
+        "sourceSha256": "9d72b8c1529384edbf075eaf0f37b41b6087a2528d916b6fb6ac40d864470570",
+        "outputSha256": "fe7c9e86a99739c0fedbc39344cdd0be492785f7d1d4913c95ec9202423e8c9e",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_you_win": [
+      {
+        "file": "./assets/audio/vo_you_win.m4a",
+        "duration": 1.254,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/you_win.ogg",
+        "sourceSha256": "545b68cd40bc3f91af565b70ea0abcd759ed715edd23e556fa61027374660992",
+        "outputSha256": "af1ef1a6bf593a2cf998e3d9a536f00db08ea1c93168d66648be2dd5df0da751",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_you_lose": [
+      {
+        "file": "./assets/audio/vo_you_lose.m4a",
+        "duration": 1.384,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/you_lose.ogg",
+        "sourceSha256": "b21aab4d4897f6d331fc354a4827edd56ab621a2a74dbbffd123e379d2f0c858",
+        "outputSha256": "97847ce22540d1349bf2ce10621525943fa53eb4a4716e9b6db9ca5524f1c6a5",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_game_over": [
+      {
+        "file": "./assets/audio/vo_game_over.m4a",
+        "duration": 1.769,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/game_over.ogg",
+        "sourceSha256": "25ae813585ad19ccbbe65d09e1ab42b79daf1b1df75f3e5a03f40918ebee82c3",
+        "outputSha256": "2ef14a9ea4bfbb108685fbe4bfd0c4e3df6129b91ede0fef73abab7ef3914a74",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_winner": [
+      {
+        "file": "./assets/audio/vo_winner.m4a",
+        "duration": 1.423,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/winner.ogg",
+        "sourceSha256": "109cf00bedc2dc6579dac8096c9026c66f5946074bf3d1586bc09366b6581357",
+        "outputSha256": "6cbbd55d3f9f72e0d1319611507e6690e9f6c25b97568aa9bf90da36973cd4f7",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ],
+    "vo_sudden_death": [
+      {
+        "file": "./assets/audio/vo_sudden_death.m4a",
+        "duration": 1.438,
+        "title": "Voiceover Pack: Fighter",
+        "author": "Kenney (kenney.nl)",
+        "url": "https://opengameart.org/content/voiceover-pack-fighter-40-taunts",
+        "licence": "CC0 1.0",
+        "source": "Audio Sources/kenney_voiceover_fighter/Audio/sudden_death.ogg",
+        "sourceSha256": "cdca9b9946fe7104a767f74e6f7d69c727cc0595adfbbdb470df388a1bed37fc",
+        "outputSha256": "1d1984225e9f042e447f788b285d4a4ff19bc48810801eda18d8060665129f29",
+        "archive": "downloads/kenney_voiceoverFighter.zip",
+        "modifications": "re-encoded to AAC 64 kbps, 1 ch; content unedited"
+      }
+    ]
+  }
+}

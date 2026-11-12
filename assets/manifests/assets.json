@@ -1,0 +1,1202 @@
+{
+  "generated": "2026-11-12T14:54:12.323Z",
+  "note": "Source files in assets/ are never moved or renamed; runtime copies live in public/game-assets/.",
+  "assets": [
+    {
+      "name": "runner-azure",
+      "source": "assets/Characters/Tron-Blue-Hero.glb",
+      "runtime": "game-assets/characters/player/runner-azure.glb",
+      "category": "character",
+      "format": "GLB",
+      "sizeBytes": 1529656,
+      "intendedUsage": "Player default skin",
+      "status": "ready",
+      "triangles": 45156,
+      "meshes": 4,
+      "materials": [
+        "Tron-Blue-Hero",
+        "DiscBody",
+        "DiscGlow",
+        "PropDark",
+        "PropGlow"
+      ],
+      "textures": 4,
+      "rigged": true,
+      "bones": 25,
+      "animations": [
+        "Block",
+        "Dodge",
+        "Duck",
+        "Fall",
+        "GrabDisc",
+        "HitAir",
+        "HitFall",
+        "HoldDisc",
+        "Idle",
+        "Jump",
+        "Land",
+        "Ride",
+        "RideClosed",
+        "Run",
+        "Throw",
+        "TPose",
+        "Walk"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "runner-cobalt",
+      "source": "assets/Characters/Tron-BlueHero2.glb",
+      "runtime": "game-assets/characters/player/runner-cobalt.glb",
+      "category": "character",
+      "format": "GLB",
+      "sizeBytes": 1638236,
+      "intendedUsage": "Player unlock skin; VR glove hands",
+      "status": "ready",
+      "triangles": 44027,
+      "meshes": 4,
+      "materials": [
+        "Tron-BlueHero2",
+        "Glove",
+        "GloveGlow",
+        "DiscBody",
+        "DiscGlow",
+        "DiscGlass",
+        "PropDark",
+        "PropGlow"
+      ],
+      "textures": 4,
+      "rigged": true,
+      "bones": 55,
+      "animations": [
+        "Block",
+        "Dodge",
+        "Duck",
+        "Fall",
+        "GrabDisc",
+        "HitAir",
+        "HitFall",
+        "HoldDisc",
+        "Idle",
+        "Jump",
+        "Land",
+        "Ride",
+        "RideClosed",
+        "Run",
+        "Throw",
+        "TPose",
+        "Walk"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "runner-ivory",
+      "source": "assets/Characters/Tron-White.glb",
+      "runtime": "game-assets/characters/enemies/runner-ivory.glb",
+      "category": "character",
+      "format": "GLB",
+      "sizeBytes": 1700680,
+      "intendedUsage": "Sentinel / Striker / Ricochet enemies",
+      "status": "ready",
+      "triangles": 40288,
+      "meshes": 4,
+      "materials": [
+        "DiscBody",
+        "DiscGlow",
+        "PropDark",
+        "PropGlow",
+        "Tron-White",
+        "Glove",
+        "GloveGlow"
+      ],
+      "textures": 4,
+      "rigged": true,
+      "bones": 55,
+      "animations": [
+        "Block",
+        "Dodge",
+        "Duck",
+        "Fall",
+        "GrabDisc",
+        "HitAir",
+        "HitFall",
+        "HoldDisc",
+        "Idle",
+        "Jump",
+        "Land",
+        "Ride",
+        "RideClosed",
+        "Run",
+        "Throw",
+        "TPose",
+        "Walk"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "runner-crimson",
+      "source": "assets/Characters/Tron-RedGuard.glb",
+      "runtime": "game-assets/characters/bosses/runner-crimson.glb",
+      "category": "character",
+      "format": "GLB",
+      "sizeBytes": 1949144,
+      "intendedUsage": "Guardian / Hunter / boss enemies",
+      "status": "ready",
+      "triangles": 46881,
+      "meshes": 4,
+      "materials": [
+        "DiscBody",
+        "DiscGlow",
+        "PropDark",
+        "PropGlow",
+        "Tron-RedGuard",
+        "Glove",
+        "GloveGlow"
+      ],
+      "textures": 4,
+      "rigged": true,
+      "bones": 58,
+      "animations": [
+        "Block",
+        "Dodge",
+        "Duck",
+        "Fall",
+        "GrabDisc",
+        "HitAir",
+        "HitFall",
+        "HoldDisc",
+        "Idle",
+        "Jump",
+        "Land",
+        "Ride",
+        "RideClosed",
+        "Run",
+        "Throw",
+        "TPose",
+        "Walk"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "cycle-azure",
+      "source": "assets/Vehicles/Blue-LightCycle-OK.glb",
+      "runtime": "game-assets/vehicles/player/cycle-azure.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1163184,
+      "intendedUsage": "Player cycle (canopy)",
+      "status": "ready",
+      "triangles": 47014,
+      "meshes": 12,
+      "materials": [
+        "CanopyGlass",
+        "RimMetal",
+        "FireButton",
+        "Cabin",
+        "Glow",
+        "Tire",
+        "Blue-LightCycle-OK_Body",
+        "Seat",
+        "HUD"
+      ],
+      "textures": 5,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "CanopyClose",
+        "CanopyOpen",
+        "CanopyOpenIdle",
+        "Drive",
+        "DriveFast",
+        "Fire",
+        "Idle"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "cycle-violet",
+      "source": "assets/Vehicles/Tron-PurpleLightCycle.glb",
+      "runtime": "game-assets/vehicles/player/cycle-violet.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1581620,
+      "intendedUsage": "Unlock cycle / rival",
+      "status": "ready",
+      "triangles": 45457,
+      "meshes": 12,
+      "materials": [
+        "CanopyGlass",
+        "RimMetal",
+        "FireButton",
+        "Cabin",
+        "Glow",
+        "Tire",
+        "Tron-PurpleLightCycle_Body",
+        "Seat",
+        "HUD"
+      ],
+      "textures": 5,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "CanopyClose",
+        "CanopyOpen",
+        "CanopyOpenIdle",
+        "Drive",
+        "DriveFast",
+        "Fire",
+        "Idle"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "cycle-jade",
+      "source": "assets/Vehicles/Tron-GreenLightCycle.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-jade.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1975152,
+      "intendedUsage": "Rival cycle",
+      "status": "ready",
+      "triangles": 49886,
+      "meshes": 9,
+      "materials": [
+        "FireButton",
+        "Cabin",
+        "RimMetal",
+        "Glow",
+        "Tire",
+        "Tron-GreenLightCycle_Body",
+        "Seat",
+        "HUD"
+      ],
+      "textures": 5,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "Drive",
+        "DriveFast",
+        "Fire",
+        "Idle"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "cycle-ember",
+      "source": "assets/Vehicles/Tron-RedLIghtCycle.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-ember.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1626716,
+      "intendedUsage": "Rival cycle",
+      "status": "ready",
+      "triangles": 38436,
+      "meshes": 9,
+      "materials": [
+        "FireButton",
+        "Cabin",
+        "RimMetal",
+        "Glow",
+        "Tire",
+        "Tron-RedLIghtCycle_Body",
+        "Seat",
+        "HUD"
+      ],
+      "textures": 5,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "Drive",
+        "DriveFast",
+        "Fire",
+        "Idle"
+      ],
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp",
+        "KHR_materials_emissive_strength",
+        "KHR_mesh_quantization"
+      ],
+      "generator": "glTF-Transform v4.5.1"
+    },
+    {
+      "name": "cycle-wraith",
+      "source": "assets/generated/cycle-wraith.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-wraith.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 3687308,
+      "intendedUsage": "Rival cycle, generated for this game (Tripo text-to-3D via Higgsfield); recoloured per rider at runtime",
+      "status": "ready",
+      "triangles": 29146,
+      "meshes": 1,
+      "materials": [
+        "tripo_material_1dbb836c-3e8e-4136-9b50-6b74577cddd0"
+      ],
+      "textures": 3,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [],
+      "generator": "https://tripo3d.ai"
+    },
+    {
+      "name": "cycle-bulwark",
+      "source": "assets/generated/cycle-bulwark.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-bulwark.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 177252,
+      "intendedUsage": "Rival ring-wheel cycle, original design (scripts/blender/build_cycles.py)",
+      "status": "ready",
+      "triangles": 5880,
+      "meshes": 7,
+      "materials": [
+        "Tire",
+        "Trim",
+        "Body",
+        "Glass",
+        "Armor",
+        "Metal"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "stand",
+      "source": "assets/generated/arena-stand.glb",
+      "runtime": "game-assets/environments/cycle-arenas/stand.glb",
+      "category": "environment",
+      "format": "GLB",
+      "sizeBytes": 21692,
+      "intendedUsage": "Grandstand module around the cycle grid (scripts/blender/build_arena_kit.py)",
+      "status": "ready",
+      "triangles": 336,
+      "meshes": 4,
+      "materials": [
+        "Shell",
+        "Trim",
+        "Deck",
+        "Window"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "pylon",
+      "source": "assets/generated/arena-pylon.glb",
+      "runtime": "game-assets/environments/cycle-arenas/pylon.glb",
+      "category": "environment",
+      "format": "GLB",
+      "sizeBytes": 28260,
+      "intendedUsage": "Corner pylon for the cycle grid (scripts/blender/build_arena_kit.py)",
+      "status": "ready",
+      "triangles": 760,
+      "meshes": 3,
+      "materials": [
+        "Shell",
+        "Trim",
+        "Window"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "cockpit-console",
+      "source": "assets/generated/cockpit-console.glb",
+      "runtime": "game-assets/vehicles/player/cockpit-console.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 4856404,
+      "intendedUsage": "Cockpit console with the rider's hands, generated for this game (concept image, then Tripo image-to-3D via Higgsfield)",
+      "status": "ready",
+      "triangles": 43038,
+      "meshes": 1,
+      "materials": [
+        "tripo_material_6ca00b92-4634-4278-bc56-9f45dd7918bf"
+      ],
+      "textures": 3,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [],
+      "generator": "https://tripo3d.ai"
+    },
+    {
+      "name": "patrol-craft",
+      "source": "assets/generated/patrol-craft.glb",
+      "runtime": "game-assets/vehicles/air/patrol-craft.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 157384,
+      "intendedUsage": "Patrol skimmer circling above arenas and circuits, original design (scripts/blender/build_craft.py)",
+      "status": "ready",
+      "triangles": 6388,
+      "meshes": 7,
+      "materials": [
+        "Shell",
+        "Window",
+        "Panel",
+        "Lens",
+        "Trim",
+        "NavRed",
+        "NavGreen"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "cockpit",
+      "source": "assets/generated/cockpit.glb",
+      "runtime": "game-assets/vehicles/player/cockpit.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 453676,
+      "intendedUsage": "First-person / VR cockpit (built by scripts/blender/build_cockpit.py)",
+      "status": "ready",
+      "triangles": 19494,
+      "meshes": 6,
+      "materials": [
+        "Body",
+        "Trim",
+        "Panel",
+        "Metal",
+        "Screen",
+        "Grip"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "disc-azure",
+      "source": "assets/Objects/Discs/Tron-BlueHero2_Disc.glb",
+      "runtime": "game-assets/weapons/discs/disc-azure.glb",
+      "category": "weapon",
+      "format": "GLB",
+      "sizeBytes": 82588,
+      "intendedUsage": "Player disc projectile",
+      "status": "ready",
+      "triangles": 2856,
+      "meshes": 1,
+      "materials": [
+        "BlueHero2DiscBody",
+        "BlueHero2DiscGlow",
+        "BlueHero2DiscGlass"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "Spin"
+      ],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v5.2.41"
+    },
+    {
+      "name": "disc-ivory",
+      "source": "assets/Objects/Discs/Tron-White_Disc.glb",
+      "runtime": "game-assets/weapons/discs/disc-ivory.glb",
+      "category": "weapon",
+      "format": "GLB",
+      "sizeBytes": 52840,
+      "intendedUsage": "Enemy disc projectile",
+      "status": "ready",
+      "triangles": 1608,
+      "meshes": 1,
+      "materials": [
+        "WhiteDiscBody",
+        "WhiteDiscGlow"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "Spin"
+      ],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v5.2.41"
+    },
+    {
+      "name": "disc-crimson",
+      "source": "assets/Objects/Discs/Tron-RedGuard_Disc.glb",
+      "runtime": "game-assets/weapons/discs/disc-crimson.glb",
+      "category": "weapon",
+      "format": "GLB",
+      "sizeBytes": 86980,
+      "intendedUsage": "Elite/boss disc projectile",
+      "status": "ready",
+      "triangles": 2752,
+      "meshes": 1,
+      "materials": [
+        "RedGuardDiscBody",
+        "RedGuardDiscGlow"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [
+        "Spin"
+      ],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v5.2.41"
+    },
+    {
+      "name": "glove-hands",
+      "source": "assets/Objects/glove_hands.glb",
+      "runtime": "game-assets/characters/player/glove-hands.glb",
+      "category": "character",
+      "format": "GLB",
+      "sizeBytes": 357164,
+      "intendedUsage": "VR hands",
+      "status": "ready",
+      "triangles": 3008,
+      "meshes": 2,
+      "materials": [
+        "Glove",
+        "GloveGlow"
+      ],
+      "textures": 0,
+      "rigged": true,
+      "bones": 16,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "pedestal",
+      "source": "assets/Environments/pedestal.glb",
+      "runtime": "game-assets/environments/disc-arenas/pedestal.glb",
+      "category": "environment",
+      "format": "GLB",
+      "sizeBytes": 813972,
+      "intendedUsage": "Disc Arena platform visual (collision is analytic)",
+      "status": "ready",
+      "triangles": 20000,
+      "meshes": 1,
+      "materials": [
+        "PedestalPBR"
+      ],
+      "textures": 3,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "coliseum",
+      "source": "assets/Environments/disc_coliseum.glb",
+      "runtime": "game-assets/environments/disc-arenas/coliseum.glb",
+      "category": "environment",
+      "format": "GLB",
+      "sizeBytes": 2274544,
+      "intendedUsage": "Disc Arena outer stadium shell (decor only)",
+      "status": "ready",
+      "triangles": 5344,
+      "meshes": 3,
+      "materials": [
+        "Scene_-_Root"
+      ],
+      "textures": 7,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_clearcoat",
+        "KHR_materials_emissive_strength",
+        "KHR_materials_specular"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "city",
+      "source": "assets/Environments/cycle_city.glb",
+      "runtime": "game-assets/environments/cycle-arenas/city.glb",
+      "category": "environment",
+      "format": "GLB",
+      "sizeBytes": 3891548,
+      "intendedUsage": "Cycle arena skyline (decor only). \"Tron Light cycle Arena\" by ImWillows, CC BY 4.0",
+      "status": "ready",
+      "triangles": 17255,
+      "meshes": 21,
+      "materials": [
+        "Glow_White",
+        "Windows",
+        "Glow_Cyan",
+        "Arena_Wall_Barrier",
+        "Large_Buildings_2",
+        "Large_Buildings_1",
+        "Small_Buildings_1",
+        "Small_Buildings_2",
+        "Glow_Cyan.001",
+        "Arena_Flood_Lights",
+        "Arena_Floor",
+        "City_Floor",
+        "Entrance_Facade",
+        "Arena_Wall",
+        "Outer_City_Facade",
+        "Inner_City_Towers",
+        "Crowd_Stands",
+        "Crowd_Stands_Reflection",
+        "Glow_Blue"
+      ],
+      "textures": 18,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength",
+        "KHR_materials_specular"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "arena-360",
+      "source": "assets/Environments/Panoramic Outer Environments/Sample 1/arena_360_equirectangular.png",
+      "runtime": "game-assets/panoramas/disc-arena/arena-360.jpg",
+      "category": "panorama",
+      "format": "JPEG (from PNG 1774x887, equirectangular)",
+      "intendedUsage": "Distant sky dome for arenas; never used for collision",
+      "status": "ready (low resolution: used tinted/blurred behind real 3D geometry)"
+    },
+    {
+      "name": "crowd_bed_ambience.m4a",
+      "source": "assets/audio/crowd_bed_ambience.m4a",
+      "runtime": "game-assets/audio/crowd_bed_ambience.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "crowd_bed_chatter.m4a",
+      "source": "assets/audio/crowd_bed_chatter.m4a",
+      "runtime": "game-assets/audio/crowd_bed_chatter.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "crowd_chant_rhythmic.m4a",
+      "source": "assets/audio/crowd_chant_rhythmic.m4a",
+      "runtime": "game-assets/audio/crowd_chant_rhythmic.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "crowd_chant_strong.m4a",
+      "source": "assets/audio/crowd_chant_strong.m4a",
+      "runtime": "game-assets/audio/crowd_chant_strong.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "crowd_cheer_soft.m4a",
+      "source": "assets/audio/crowd_cheer_soft.m4a",
+      "runtime": "game-assets/audio/crowd_cheer_soft.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "crowd_cheer_strong.m4a",
+      "source": "assets/audio/crowd_cheer_strong.m4a",
+      "runtime": "game-assets/audio/crowd_cheer_strong.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "crowd_cheer_strong2.m4a",
+      "source": "assets/audio/crowd_cheer_strong2.m4a",
+      "runtime": "game-assets/audio/crowd_cheer_strong2.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "jeer_loser.m4a",
+      "source": "assets/audio/jeer_loser.m4a",
+      "runtime": "game-assets/audio/jeer_loser.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "jeer_prepare_yourself.m4a",
+      "source": "assets/audio/jeer_prepare_yourself.m4a",
+      "runtime": "game-assets/audio/jeer_prepare_yourself.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_boss.mp3",
+      "source": "assets/audio/mus_boss.mp3",
+      "runtime": "game-assets/audio/mus_boss.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_combat.m4a",
+      "source": "assets/audio/mus_combat.m4a",
+      "runtime": "game-assets/audio/mus_combat.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_cycles.mp3",
+      "source": "assets/audio/mus_cycles.mp3",
+      "runtime": "game-assets/audio/mus_cycles.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_discs.mp3",
+      "source": "assets/audio/mus_discs.mp3",
+      "runtime": "game-assets/audio/mus_discs.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_hub.m4a",
+      "source": "assets/audio/mus_hub.m4a",
+      "runtime": "game-assets/audio/mus_hub.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_menu.mp3",
+      "source": "assets/audio/mus_menu.mp3",
+      "runtime": "game-assets/audio/mus_menu.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "mus_race.mp3",
+      "source": "assets/audio/mus_race.mp3",
+      "runtime": "game-assets/audio/mus_race.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "sfx_crash.mp3",
+      "source": "assets/audio/sfx_crash.mp3",
+      "runtime": "game-assets/audio/sfx_crash.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "sfx_cycle_engine.mp3",
+      "source": "assets/audio/sfx_cycle_engine.mp3",
+      "runtime": "game-assets/audio/sfx_cycle_engine.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "sfx_disc_throw.mp3",
+      "source": "assets/audio/sfx_disc_throw.mp3",
+      "runtime": "game-assets/audio/sfx_disc_throw.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "sfx_ricochet.mp3",
+      "source": "assets/audio/sfx_ricochet.mp3",
+      "runtime": "game-assets/audio/sfx_ricochet.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "sfx_shatter.mp3",
+      "source": "assets/audio/sfx_shatter.mp3",
+      "runtime": "game-assets/audio/sfx_shatter.mp3",
+      "category": "audio",
+      "format": "mp3",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_begin.m4a",
+      "source": "assets/audio/vo_begin.m4a",
+      "runtime": "game-assets/audio/vo_begin.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_fight.m4a",
+      "source": "assets/audio/vo_fight.m4a",
+      "runtime": "game-assets/audio/vo_fight.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_final_round.m4a",
+      "source": "assets/audio/vo_final_round.m4a",
+      "runtime": "game-assets/audio/vo_final_round.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_flawless_victory.m4a",
+      "source": "assets/audio/vo_flawless_victory.m4a",
+      "runtime": "game-assets/audio/vo_flawless_victory.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_game_over.m4a",
+      "source": "assets/audio/vo_game_over.m4a",
+      "runtime": "game-assets/audio/vo_game_over.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_its_a_tie.m4a",
+      "source": "assets/audio/vo_its_a_tie.m4a",
+      "runtime": "game-assets/audio/vo_its_a_tie.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_ready.m4a",
+      "source": "assets/audio/vo_ready.m4a",
+      "runtime": "game-assets/audio/vo_ready.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_round_1.m4a",
+      "source": "assets/audio/vo_round_1.m4a",
+      "runtime": "game-assets/audio/vo_round_1.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_round_2.m4a",
+      "source": "assets/audio/vo_round_2.m4a",
+      "runtime": "game-assets/audio/vo_round_2.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_round_3.m4a",
+      "source": "assets/audio/vo_round_3.m4a",
+      "runtime": "game-assets/audio/vo_round_3.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_round_4.m4a",
+      "source": "assets/audio/vo_round_4.m4a",
+      "runtime": "game-assets/audio/vo_round_4.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_round_5.m4a",
+      "source": "assets/audio/vo_round_5.m4a",
+      "runtime": "game-assets/audio/vo_round_5.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_sudden_death.m4a",
+      "source": "assets/audio/vo_sudden_death.m4a",
+      "runtime": "game-assets/audio/vo_sudden_death.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_winner.m4a",
+      "source": "assets/audio/vo_winner.m4a",
+      "runtime": "game-assets/audio/vo_winner.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_you_lose.m4a",
+      "source": "assets/audio/vo_you_lose.m4a",
+      "runtime": "game-assets/audio/vo_you_lose.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "vo_you_win.m4a",
+      "source": "assets/audio/vo_you_win.m4a",
+      "runtime": "game-assets/audio/vo_you_win.m4a",
+      "category": "audio",
+      "format": "m4a",
+      "intendedUsage": "Recorded audio layer over the synthesised sound",
+      "status": "ready"
+    },
+    {
+      "name": "city-arteries.jpg",
+      "source": "assets/generated/panoramas/city-arteries.jpg",
+      "runtime": "game-assets/panoramas/city/city-arteries.jpg",
+      "category": "panorama",
+      "format": "JPEG",
+      "intendedUsage": "Sky-dome city band (mirrored so it wraps without a seam)",
+      "status": "ready"
+    },
+    {
+      "name": "city-dome.jpg",
+      "source": "assets/generated/panoramas/city-dome.jpg",
+      "runtime": "game-assets/panoramas/city/city-dome.jpg",
+      "category": "panorama",
+      "format": "JPEG",
+      "intendedUsage": "Sky-dome city band (mirrored so it wraps without a seam)",
+      "status": "ready"
+    },
+    {
+      "name": "city-halo.jpg",
+      "source": "assets/generated/panoramas/city-halo.jpg",
+      "runtime": "game-assets/panoramas/city/city-halo.jpg",
+      "category": "panorama",
+      "format": "JPEG",
+      "intendedUsage": "Sky-dome city band (mirrored so it wraps without a seam)",
+      "status": "ready"
+    },
+    {
+      "name": "city-wire.jpg",
+      "source": "assets/generated/panoramas/city-wire.jpg",
+      "runtime": "game-assets/panoramas/city/city-wire.jpg",
+      "category": "panorama",
+      "format": "JPEG",
+      "intendedUsage": "Sky-dome city band (mirrored so it wraps without a seam)",
+      "status": "ready"
+    },
+    {
+      "name": "Discs Combat - Neon Disc Arena Showdown 2.png",
+      "source": "assets/Concept Images/Discs Combat - Neon Disc Arena Showdown 2.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Discs Combat - Neon Disc Arena Showdown.png",
+      "source": "assets/Concept Images/Discs Combat - Neon Disc Arena Showdown.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Discs Combat - Neon Disc Warriors Arena 3.png",
+      "source": "assets/Concept Images/Discs Combat - Neon Disc Warriors Arena 3.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Discs Combat - Neon Light-Cycle Showdown.png",
+      "source": "assets/Concept Images/Discs Combat - Neon Light-Cycle Showdown.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Discs Combat - Neon Lightcycles Over the Future Arena.png",
+      "source": "assets/Concept Images/Discs Combat - Neon Lightcycles Over the Future Arena.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Discs Combat - Neon TRON Discs Arena Showdown 2.png",
+      "source": "assets/Concept Images/Discs Combat - Neon TRON Discs Arena Showdown 2.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Discs Combat - Neon Tron Disc Showdown.png",
+      "source": "assets/Concept Images/Discs Combat - Neon Tron Disc Showdown.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Light Cycles - Neon Cyberpunk Cityscape in Virtual Light.png",
+      "source": "assets/Concept Images/Light Cycles - Neon Cyberpunk Cityscape in Virtual Light.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Panoramic Environment - Light Cycles - Neon Cyber Arena Circuit.png",
+      "source": "assets/Concept Images/Panoramic Environment - Light Cycles - Neon Cyber Arena Circuit.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Panoramic Environment - Neon Halo Over a Futuristic City.png",
+      "source": "assets/Concept Images/Panoramic Environment - Neon Halo Over a Futuristic City.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    },
+    {
+      "name": "Panoramic Environment - Neon Tron-Style Sci-Fi Arena.png",
+      "source": "assets/Concept Images/Panoramic Environment - Neon Tron-Style Sci-Fi Arena.png",
+      "category": "concept",
+      "format": "PNG",
+      "intendedUsage": "Art-direction reference only (not shipped)",
+      "status": "reference"
+    }
+  ]
+}
