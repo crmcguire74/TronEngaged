@@ -201,7 +201,7 @@ export class RaceSession extends BaseSession {
     const down = P.downT > 0; if (down) this.downCam += dt; const first = this.xr ? this.vrFirst && seated : this.cockpit && this.phase !== 'intro' && !down;
     const me = this.cv[pi]; me.firstPerson(first); me.setPower(this.phase === 'intro' ? smooth(clamp(this.t / this.introDur * 1.4 - 0.2, 0, 1)) : 1);
     // cockpit: the yoke and hands follow the controls, and the lamps beside the display show the light wall's state
-    const live = this.phase === 'play'; me.drive(live ? this.intent.steer : 0, live ? this.intent.accel : 0, live ? this.intent.brake : 0, sp01, P.boosting, dt);
+    const live = this.phase === 'play'; me.drive(live ? this.intent.steer : 0, live ? this.intent.accel : 0, live ? this.intent.brake : 0, sp01, P.boosting, dt, P.speed * 3.6);
     me.setWall(!sim.lightwalls ? 'none' : P.wallT > 0 ? 'on' : P.wallCd <= 0 ? 'ready' : 'charging', 1 - P.wallCd / WALL_COOLDOWN); if (this.phase === 'outro') me.unseal(); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
     if (this.xr && !seated) { if (!this.recentred) { this.recentred = true; this.offset.copy(cam.position); this.vrYaw = yaw; } this.start.placeBeside(px, py, pz, yaw, this.offset); hud.vrSeat = null; xr.showHands = true; xr.update(dt, false); engine.vignetteAmount = 0; }
     else if (this.xr) {

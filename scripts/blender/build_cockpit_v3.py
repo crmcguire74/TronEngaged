@@ -1,6 +1,6 @@
 # Third-generation first-person cockpit (cockpit view and VR), original design: deep gloss-black clear-coated bodywork,
 # polished chrome hardware, broad clean neon bands, an octagonal black-glass display with the live readout under it,
-# twin round chrome gauges with live needles, chrome handlebars with ribbed black grips, and a hinged glass canopy.
+# twin round black-glass gauges with live holographic graphics, chrome handlebars with ribbed black grips, and a hinged glass canopy.
 #   /Applications/Blender.app/Contents/MacOS/Blender -b --python scripts/blender/build_cockpit_v3.py -- assets/generated
 # Blender axes: X (the rider's right is -X), -Y forward, Z up. The rider's eye is at (0, 0.2, 1.27).
 # Named nodes the game drives: 'Yoke' (origin on the steering axis; rolls about Y), 'Canopy' (origin on the rear hinge;
@@ -25,6 +25,7 @@ DGLASS = kit.mat('DisplayGlass', (0.0, 0.0, 0.0), 0.0, 0.03)
 GLASS = kit.mat('Glass', (0.6, 0.8, 0.9), 0.0, 0.05)
 LENS = kit.mat('Lens', (0.01, 0.012, 0.015), 0.3, 0.05)
 NEEDLE = kit.mat('Needle', (0, 0, 0), 0.0, 0.4, (1.0, 1.0, 1.0), 4.0)
+HOLO = kit.mat('Holo', (0, 0, 0), 0.0, 0.4, (0.31, 0.89, 1.0), 1.0)   # line-art overlay; the game draws it
 
 EYE = Vector((0, 0.2, 1.27))
 yoke_parts, canopy_parts = [], []
@@ -84,7 +85,11 @@ def on_top(w, zt, zb, power, frac):
 # ------------------------------------------------------------------ forward cowl with broad neon bands sweeping to the prow
 COWL = [(-0.50, 0.46, 0.895, 0.50), (-0.80, 0.47, 0.925, 0.46), (-1.10, 0.37, 0.89, 0.44), (-1.40, 0.22, 0.80, 0.45), (-1.62, 0.06, 0.665, 0.52)]
 P = 5.0
-kit.loft('Cowl', COWL, BODY, n=28, power=P)
+cowl = kit.loft('Cowl', COWL, BODY, n=28, power=P)
+# the cowl's rear cap faces the rider: satin, so it doesn't mirror the lit stands behind him as a white blotch
+cowl.data.materials.append(SATIN)
+for poly in cowl.data.polygons:
+    if abs(poly.normal.y) > 0.9 and poly.center.y > -0.55: poly.material_index = 1
 def cowl_at(y):
     for a, b in zip(COWL, COWL[1:]):
         if b[0] <= y <= a[0]:
@@ -108,31 +113,30 @@ def band_on_cowl(name, sx, f_of_t, width, y0, y1, material, steps=24, lift=0.003
     return link(name, bm, material, smooth=True)
 for sx in (-1, 1):
     # the main sweep: wide at the shoulders, converging toward the prow
-    band_on_cowl('CowlBand', sx, lambda t: 0.93 - 0.7 * t ** 1.15, 0.02, -0.52, -1.5, TRIM)
+    band_on_cowl('CowlBand', sx, lambda t: 0.93 - 0.7 * t ** 1.15, 0.042, -0.52, -1.5, TRIM)
     # a fine chrome pinstripe running inside it
-    band_on_cowl('CowlPin', sx, lambda t: 0.83 - 0.62 * t ** 1.15, 0.005, -0.56, -1.42, CHROME)
+    band_on_cowl('CowlPin', sx, lambda t: 0.8 - 0.6 * t ** 1.15, 0.005, -0.56, -1.42, CHROME)
 kit.box('Prow', (0.1, 0.02, 0.014), (0, -1.6, 0.675), TRIM)
 # a broad lit edge framing the rear of the dash, following the cowl's top contour (joins the two sweeps)
 _, w0, zt0, zb0 = COWL[0]
-kit.tube('DashEdge', [(w0 * f, -0.503, on_top(w0, zt0, zb0, P, abs(f)) + 0.003) for f in [i / 20 * 1.86 - 0.93 for i in range(21)]], 0.0065, TRIM, res=4, bevel_res=3)
+kit.tube('DashEdge', [(w0 * f, -0.503, on_top(w0, zt0, zb0, P, abs(f)) + 0.003) for f in [i / 20 * 1.86 - 0.93 for i in range(21)]], 0.0095, TRIM, res=4, bevel_res=3)
 
 # ------------------------------------------------------------------ octagonal black-glass display facing the rider's eye
 C = Vector((0, -0.68, 0.985)); N = EYE - C; N.x = 0; N.normalize(); UP = Vector((0, -N.z, N.y)); RT = Vector((-1, 0, 0))
 HW, HH = 0.17, 0.083
 house = slab('Housing', octagon(0.215, 0.122, 0.05), -0.1, 0.0, BODY); orient(house, N, C - N * 0.004)
-bez = frame('Bezel', octagon(0.196, 0.105, 0.042), octagon(0.177, 0.088, 0.034), 0.0, 0.012, CHROME); orient(bez, N, C)
+bez = frame('Bezel', octagon(0.196, 0.105, 0.042), octagon(0.177, 0.088, 0.034), 0.0, 0.012, BODY); orient(bez, N, C)
+# a broad lit octagon framing the glass, and a line-art overlay floated just in front of the live readout
+glow = frame('DisplayGlow', octagon(0.194, 0.103, 0.041), octagon(0.184, 0.093, 0.037), 0.0, 0.004, TRIM); orient(glow, N, C + N * 0.012)
 quad('Screen', C + N * 0.002, RT, UP, HW, HH, SCREEN)
 dg = slab('DisplayGlass', octagon(0.18, 0.09, 0.035), 0.0, 0.002, DGLASS); orient(dg, N, C + N * 0.006)
+quad('HoloFrame', C + N * 0.0045, RT, UP, 0.185, 0.1, HOLO)
 # a neon lip under the display and lamp columns on the housing's flanks show the light wall's state
 lip = frame('LampLip', [(-0.15, -0.116), (0.15, -0.116), (0.18, -0.1), (-0.18, -0.1)], [(-0.145, -0.111), (0.145, -0.111), (0.17, -0.103), (-0.17, -0.103)], 0.0, 0.006, LAMP); orient(lip, N, C)
 for sx in (-1, 1):
     col = slab('LampCol', [(-0.006, -0.06), (0.006, -0.06), (0.006, 0.06), (-0.006, 0.06)], 0.0, 0.006, LAMP); orient(col, N, C + RT * (sx * 0.208))
-# visor brow over the display with a broad light edge
-BD = Vector((0, math.cos(-0.28), math.sin(-0.28)))
-kit.box('Brow', (0.47, 0.1, 0.02), tuple(C + UP * (HH + 0.06) + N * 0.04), BODY, rot=(-0.28, 0, 0), bevel=0.008)
-kit.box('BrowBand', (0.4, 0.012, 0.006), tuple(C + UP * (HH + 0.06) + N * 0.04 + BD * 0.055 + Vector((0, 0, 0.008))), TRIM, rot=(-0.28, 0, 0))
 
-# ------------------------------------------------------------------ twin round gauges with chrome bezels and live needles
+# ------------------------------------------------------------------ twin round black-glass gauges with chrome bezels; the game draws their live graphics
 needles = []
 for sx, nm in ((1, 'DialL'), (-1, 'DialR')):
     dc = Vector((sx * 0.3, -0.62, 0.935)); dn = (EYE - dc).normalized()
@@ -140,17 +144,13 @@ for sx, nm in ((1, 'DialL'), (-1, 'DialR')):
     orient(ring('GaugeBezel', 0.066, 0.009, CHROME, seg=56), dn, dc + dn * 0.006)
     orient(cyl('GaugeFace', 0.06, 0.004, LENS, seg=48), dn, dc)
     orient(ring('GaugeRing', 0.051, 0.0026, TRIM, seg=56), dn, dc + dn * 0.0055)
-    for i in range(9):
-        a = math.radians(-135 + i * 33.75); tk = kit.box('Tick', (0.003, 0.011, 0.002), (math.sin(a) * 0.041, math.cos(a) * 0.041, 0.0), CHROME, rot=(0, 0, -a))
-        tk.rotation_mode = 'XYZ'; bpy.ops.object.select_all(action='DESELECT'); tk.select_set(True); bpy.context.view_layer.objects.active = tk; bpy.ops.object.transform_apply(location=True, rotation=True, scale=False); tk.select_set(False)
-        orient(tk, dn, dc + dn * 0.0055)
-    orient(cyl('GaugeHub', 0.007, 0.006, CHROME, seg=20), dn, dc + dn * 0.004)
+    # the dial graphics (light arc, tick fans, digital readout) are drawn by the game on the 'DialL'/'DialR' nodes
     needles.append((nm, dc + dn * 0.009, dn))
 
 # ------------------------------------------------------------------ side pods: triangular light bezels with chrome toggles
 for sx in (-1, 1):
     pc = Vector((sx * 0.45, -0.56, 0.86)); pn = (EYE - pc).normalized()
-    tri_o = [(-0.085, 0.05), (0.085, 0.05), (0.0, -0.075)]; tri_i = [(-0.064, 0.038), (0.064, 0.038), (0.0, -0.051)]
+    tri_o = [(-0.085, 0.05), (0.085, 0.05), (0.0, -0.075)]; tri_i = [(-0.056, 0.032), (0.056, 0.032), (0.0, -0.04)]
     orient(slab('Pod', [(-0.1, 0.062), (0.1, 0.062), (0.0, -0.092)], -0.08, 0.0, BODY), pn, pc)
     orient(frame('PodTri', tri_o, tri_i, 0.0, 0.005, TRIM), pn, pc)
     orient(slab('PodGlass', tri_i, 0.0, 0.002, LENS), pn, pc)
@@ -182,11 +182,11 @@ for sx in (-1, 1):
 for sx in (-1, 1):
     fair = kit.loft('Fairing', [(0.35, 0.04, 0.8, 0.55), (0.0, 0.05, 0.85, 0.5), (-0.35, 0.05, 0.87, 0.5), (-0.62, 0.035, 0.85, 0.55)], BODY, n=14, power=4.0); fair.location.x = sx * 0.45
     kit.tube('Rail', [(sx * 0.45, 0.35, 0.805), (sx * 0.455, 0.0, 0.857), (sx * 0.45, -0.35, 0.877), (sx * 0.445, -0.62, 0.855)], 0.008, CHROME, res=12, bevel_res=3)
-    kit.tube('RailBand', [(sx * 0.43, 0.3, 0.797), (sx * 0.434, 0.0, 0.848), (sx * 0.43, -0.35, 0.868), (sx * 0.426, -0.6, 0.848)], 0.0055, TRIM, res=12, bevel_res=2)
+    kit.tube('RailBand', [(sx * 0.43, 0.3, 0.797), (sx * 0.434, 0.0, 0.848), (sx * 0.43, -0.35, 0.868), (sx * 0.426, -0.6, 0.848)], 0.0085, TRIM, res=12, bevel_res=2)
 TANK = [(-0.22, 0.17, 0.84, 0.5), (0.0, 0.22, 0.87, 0.48), (0.3, 0.2, 0.82, 0.48), (0.6, 0.15, 0.72, 0.5)]
 kit.loft('Tank', TANK, BODY, n=16, power=4.0)
 # neon sweeps on the tank that open around the core and close again behind it
-for sx in (-1, 1): band_on_cowl('TankBand', sx, lambda t: 0.5 + 0.32 * math.sin(math.pi * t), 0.014, -0.2, 0.56, TRIM, SECS=TANK, power=4.0)
+for sx in (-1, 1): band_on_cowl('TankBand', sx, lambda t: 0.5 + 0.32 * math.sin(math.pi * t), 0.03, -0.2, 0.56, TRIM, SECS=TANK, power=4.0)
 kit.torus('CoreBezel', 0.088, 0.012, (0, -0.02, 0.868), CHROME, seg=56, ring=8, flat=True)
 kit.torus('CoreRing', 0.07, 0.006, (0, -0.02, 0.874), TRIM, seg=56, ring=6, flat=True)
 orient(cyl('CoreLens', 0.066, 0.006, LENS, seg=48), Vector((0, 0, 1)), Vector((0, -0.02, 0.866)))

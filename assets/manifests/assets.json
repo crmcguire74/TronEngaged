@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-13T00:34:38.669Z",
+  "generated": "2026-11-13T00:55:59.324Z",
   "note": "Source files in assets/ are never moved or renamed; runtime copies live in public/game-assets/.",
   "assets": [
     {
@@ -575,16 +575,18 @@
       "runtime": "game-assets/vehicles/player/cockpit-v3.glb",
       "category": "vehicle",
       "format": "GLB",
-      "sizeBytes": 892228,
+      "sizeBytes": 869740,
       "intendedUsage": "First-person / VR cockpit v3: clear-coat black, chrome, neon bands, octagonal glass display, live gauges, ribbed grips (scripts/blender/build_cockpit_v3.py)",
-      "triangles": 33010,
-      "meshes": 11,
+      "triangles": 32588,
+      "meshes": 12,
       "materials": [
         "Body",
+        "Satin",
         "Trim",
         "Chrome",
         "Screen",
         "DisplayGlass",
+        "Holo",
         "WallLamp",
         "Lens",
         "Rubber",

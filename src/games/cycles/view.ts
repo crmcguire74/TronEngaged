@@ -7,6 +7,7 @@ import { angleLerp, clamp, damp } from '../../engine/math';
 import { revealMaterials } from '../discs/session';
 import { cosmetic } from '../../progression/rewards';
 import { GloveHand } from '../../engine/hands';
+import { HoloGauge, holoFrame } from './holo';
 
 export const CYCLE_COLORS: Record<string, number> = { azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0 };
 /** Every rival model, in the order riders are assigned them. */
@@ -20,13 +21,15 @@ const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobal
 export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'cockpit2', 'cockpit3', 'console', 'hands']).filter(Boolean))];
 /** Rider eye point relative to the cycle origin (metres): x right-handed, y up, z forward. */
 export const EYE = { y: 1.27, z: -0.2 };
-const Z_AXIS = new THREE.Vector3(0, 0, 1), ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
+const WHITE = new THREE.Color(1, 1, 1);
+const BLACK_GLASS = () => new THREE.MeshPhysicalMaterial({ name: 'Body', color: 0x010102, metalness: 0, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.4, specularIntensity: 0.6 });
+const ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
 
 /** A cycle with its rider: supplied vehicle model, materialise effect, wheel/drive animation and cosmetic lean. */
 export class CycleView {
   readonly root = new THREE.Group(); readonly body = new THREE.Group(); readonly reveal = { value: 50 }; private inst: Instance; private rider: Instance | null = null; lean = 0; private yaw = 0; glow: THREE.Mesh; private cockpit: THREE.Object3D | null = null; private fp = false; private wheels: { o: THREE.Object3D; r: number }[] = []; private lastX = 0; private lastZ = 0; private placed = false; private trims: THREE.MeshStandardMaterial[] = []; private fireT = 0; private power = { value: 1 }; private riderKey = ''; private walker: Instance | null = null; private walkReveal = { value: -1 }; private walkT = 0; private wFrom = new THREE.Vector3(); private wTo = new THREE.Vector3();
   private yoke: THREE.Object3D | null = null; private canopy: THREE.Object3D | null = null; private canopyK = 0; private canopyTarget = 0; private sealAt = -9; private canopyMoving = false; private lamps: THREE.MeshBasicMaterial[] = []; private lampCol = new THREE.Color();
-  private dials: { o: THREE.Object3D; q0: THREE.Quaternion }[] = []; private dialV = [0, 0]; private qz = new THREE.Quaternion();
+  private gauges: HoloGauge[] = []; private dialV = [0, 0];
   private gloves: { g: GloveHand; pivot: THREE.Group; wrist: THREE.Object3D; arm: THREE.Mesh; axis: THREE.Vector3; elbow: THREE.Vector3; side: number }[] = []; private steerV = 0; private yokeY = 0; private throttleV = 0; private brakeV = 0; private tv = new THREE.Vector3(); private tv2 = new THREE.Vector3();
   /** False while the rider is still on foot during the start sequence. */ mounted = true;
   /** Before the start: engine idling, canopy open where the model has one. */ parked = false;
@@ -121,20 +124,27 @@ export class CycleView {
     const assets = this.ctx.assets, c = assets.instance(assets.has('cockpit3') ? 'cockpit3' : 'cockpit2', { cloneMaterials: true }).root;
     c.traverse((o: any) => {
       if (!o.isMesh) return; o.castShadow = false; o.frustumCulled = false; const m = o.material, name = m?.name;
-      if (name === 'Screen') o.material = new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, toneMapped: false });
-      else if (name === 'Trim') { m.color.setScalar(0); m.emissive = new THREE.Color(this.color); m.emissiveIntensity = 2.2; this.trims.push(m); }
+      if (name === 'Screen') o.material = new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, color: 0xb8c4cc, toneMapped: false }); // a little under full, as if seen through the dark glass
+      else if (name === 'Trim') { m.color.setScalar(0); m.roughness = 0.6; m.envMapIntensity = 0; m.emissive = new THREE.Color(this.color).lerp(WHITE, 0.3); m.emissiveIntensity = 2.2; this.trims.push(m); }
+      else if (name === 'Holo') { o.material = holoFrame(this.color); o.renderOrder = 4; }
       else if (name === 'WallLamp') { o.material = new THREE.MeshBasicMaterial({ color: 0x1a2430, toneMapped: false }); this.lamps.push(o.material); }
       else if (name === 'Glass') { o.material = new THREE.MeshStandardMaterial({ name: 'Glass', color: 0xcfeaff, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.09, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 3 }); o.renderOrder = 6; }
-      // clear-coated black, mirror chrome and a reflective black-glass layer over the live display (cockpit v3)
-      else if (name === 'Body') o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x040506, metalness: 0.2, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.035, envMapIntensity: 1.35 });
-      else if (name === 'Chrome') o.material = new THREE.MeshStandardMaterial({ name, color: 0xe9eef3, metalness: 1, roughness: 0.07, envMapIntensity: 2.6 });
-      else if (name === 'Lens') o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x020304, metalness: 0, roughness: 0.08, clearcoat: 1, envMapIntensity: 0.9 });
+      // black glass: near-black with a mirror-smooth coat, so the sun lights make small sharp highlights rather than a grey
+      // sheen, and only a dim reflection of the sky; chrome stays as the bright accent (cockpit v3)
+      else if (name === 'Body') o.material = BLACK_GLASS();
+      else if (name === 'Chrome') o.material = new THREE.MeshStandardMaterial({ name, color: 0x9aa3ad, metalness: 1, roughness: 0.09, envMapIntensity: 1 });
+      else if (name === 'Lens') o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x000000, metalness: 0, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.45, specularIntensity: 0.6 });
       else if (name === 'DisplayGlass') { o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x000000, metalness: 0, roughness: 0.02, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.3, depthWrite: false, envMapIntensity: 2.4 }); o.renderOrder = 3; }
       else if (name === 'Needle') o.material = new THREE.MeshBasicMaterial({ color: 0xf4fbff, toneMapped: false });
       else if (name === 'Rubber') { m.roughness = 0.62; m.envMapIntensity = 0.8; }
+      else if (name === 'Satin') o.material = new THREE.MeshStandardMaterial({ name, color: 0x020203, metalness: 0.4, roughness: 0.7, envMapIntensity: 0.15 });
       else if (name === 'Alloy') m.envMapIntensity = 1.4;
     });
-    c.updateMatrixWorld(true); this.yoke = c.getObjectByName('Yoke') ?? null; this.yokeY = this.yoke?.position.y ?? 0; this.canopy = c.getObjectByName('Canopy') ?? null; this.dials = ['DialL', 'DialR'].map((n) => c.getObjectByName(n)).filter(Boolean).map((o) => ({ o: o!, q0: o!.quaternion.clone() })); this.canopyK = this.canopyTarget === 1 && this.ctx.engine.elapsed - this.sealAt < 0.5 ? 0 : this.canopyTarget; this.poseCanopy();
+    c.updateMatrixWorld(true); this.yoke = c.getObjectByName('Yoke') ?? null; this.yokeY = this.yoke?.position.y ?? 0; this.canopy = c.getObjectByName('Canopy') ?? null; // the dial nodes (left: speed, right: drive) carry the black-glass gauges' holographic graphics; the needles are retired
+    this.gauges = (['DialL', 'DialR'] as const).flatMap((n, i) => { const d = c.getObjectByName(n); if (!d) return []; d.visible = false;
+      const g = new HoloGauge(0.05, this.color, i ? 'DRIVE' : 'KM/H'), at = new THREE.Object3D(); at.position.copy(d.position); at.quaternion.copy(d.quaternion); d.parent!.add(at);
+      // node local -Z faces the eye: turn the disc round to face it, and sink it to just in front of the dial face
+      g.mesh.rotation.y = Math.PI; g.mesh.position.z = 0.0045; at.add(g.mesh); return [g]; }); this.canopyK = this.canopyTarget === 1 && this.ctx.engine.elapsed - this.sealAt < 0.5 ? 0 : this.canopyTarget; this.poseCanopy();
     if (this.yoke && assets.has('hands')) for (const sx of [1, -1]) {
       // grip ends in cockpit space (glTF: x, y up, z forward), carried into the yoke's frame so the hands roll with it
       const a = new THREE.Vector3(sx * 0.3, 0.99, 0.42), b = new THREE.Vector3(sx * 0.39, 0.985, 0.36), mid = this.yoke.worldToLocal(a.clone().lerp(b, 0.5));
@@ -145,10 +155,10 @@ export class CycleView {
       // armoured forearm with a lit cuff at the wrist
       // sculpted gauntlet: gloss black, a chrome band, a neon spine along the top and a lit cuff at the wrist
       const prof = [[0.0, -ARM / 2], [0.05, -ARM / 2], [0.058, -0.16], [0.057, -0.04], [0.05, 0.09], [0.041, 0.19], [0.043, ARM / 2 - 0.006], [0.0, ARM / 2]].map(([r, y]) => new THREE.Vector2(r, y));
-      const arm = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), new THREE.MeshPhysicalMaterial({ color: 0x050608, metalness: 0.35, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.6 }));
+      const arm = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), BLACK_GLASS());
       const neon = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.color).multiplyScalar(1.4) });
       const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.043, 0.0045, 6, 32), neon); cuff.rotation.x = Math.PI / 2; cuff.position.y = ARM / 2 - 0.03; arm.add(cuff);
-      const band = new THREE.Mesh(new THREE.TorusGeometry(0.0515, 0.006, 8, 32), new THREE.MeshStandardMaterial({ color: 0xe9eef3, metalness: 1, roughness: 0.07, envMapIntensity: 2.6 })); band.rotation.x = Math.PI / 2; band.position.y = 0.08; arm.add(band);
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.0515, 0.006, 8, 32), new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 1, roughness: 0.09, envMapIntensity: 1 })); band.rotation.x = Math.PI / 2; band.position.y = 0.08; arm.add(band);
       // the forearm's local -Z ends up on top once it is aimed forward from the elbow
       const spine = new THREE.Mesh(new THREE.BoxGeometry(0.008, ARM * 0.55, 0.004), neon); spine.position.set(0, -0.06, -0.0575); arm.add(spine);
       arm.castShadow = false; c.add(arm);
@@ -167,16 +177,16 @@ export class CycleView {
    * First-person controls, every frame: the yoke rolls with the steering, the right grip twists open with the throttle,
    * both hands bear down under braking, and the bars buzz with speed and boost.
    */
-  drive(steer: number, throttle: number, brake: number, speed01: number, boosting: boolean, dt: number) {
+  drive(steer: number, throttle: number, brake: number, speed01: number, boosting: boolean, dt: number, kmh = 0) {
     if (!this.fp || !this.yoke) return;
     this.steerV = damp(this.steerV, clamp(steer, -1, 1), 9, dt); this.throttleV = damp(this.throttleV, clamp(throttle, 0, 1), 7, dt); this.brakeV = damp(this.brakeV, clamp(brake, 0, 1), 9, dt);
     const tt = this.ctx.engine.elapsed, buzz = (0.0025 + speed01 * 0.004 + (boosting ? 0.006 : 0)) * Math.sin(tt * 71);
     this.yoke.rotation.z = this.steerV * 0.34 + buzz; this.yoke.position.y = this.yokeY + buzz * 0.4 - this.brakeV * 0.008;
     for (const h of this.gloves) { h.pivot.quaternion.setFromAxisAngle(h.axis, h.side < 0 ? -this.throttleV * 0.3 : 0); h.g.pose(0.88 + this.brakeV * 0.12); }
     this.driveArms();
-    // gauges: left reads speed, right reads drive (throttle, pinned while boosting); needles sweep 270° clockwise from bottom-left
+    // gauges: left reads speed, right reads drive (throttle, pinned while boosting); light arcs fill 270° clockwise from bottom-left
     const target = [clamp(speed01, 0, 1), boosting ? 1 : this.throttleV * 0.8];
-    this.dials.forEach((d, i) => { this.dialV[i] = damp(this.dialV[i], target[i], 6, dt); const a = (-135 + 270 * this.dialV[i] + buzz * 300) * (Math.PI / 180); d.o.quaternion.copy(d.q0).multiply(this.qz.setFromAxisAngle(Z_AXIS, a)); });
+    this.gauges.forEach((g, i) => { this.dialV[i] = damp(this.dialV[i], target[i], 6, dt); g.set(this.dialV[i], i ? String(Math.round(this.dialV[i] * 100)).padStart(3, '0') : String(Math.round(kmh)).padStart(3, '0')); });
   }
   /** Light-wall lamps beside the display: off, recharging (k: 0..1), ready, or laying a wall (bright, strobing). */
   setWall(state: 'none' | 'charging' | 'ready' | 'on', k = 0) {

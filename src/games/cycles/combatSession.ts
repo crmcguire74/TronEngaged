@@ -186,7 +186,7 @@ export class CombatSession extends BaseSession {
     this.cv[0].firstPerson(first); this.cv[0].setPower(this.phase === 'intro' ? smooth(clamp(this.t / this.introDur * 1.4 - 0.2, 0, 1)) : 1);
     // cockpit: a 90° turn flicks the yoke over and back; the lamps glow steadily because the trail is always laying
     const dy = Math.atan2(Math.sin(yaw - this.yokeYaw), Math.cos(yaw - this.yokeYaw)); this.yokeYaw = yaw; this.yokeKick = clamp(this.yokeKick * Math.exp(-7 * dt) - dy * 0.9, -1, 1);
-    this.cv[0].drive(this.yokeKick, this.phase === 'play' ? clamp(this.intent.accel + 0.5, 0, 1) : 0, this.phase === 'play' ? clamp(-this.intent.accel, 0, 1) : 0, sp01, P.boosting, dt); this.cv[0].setWall('charging', 1); if (this.phase === 'outro') this.cv[0].unseal(); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
+    this.cv[0].drive(this.yokeKick, this.phase === 'play' ? clamp(this.intent.accel + 0.5, 0, 1) : 0, this.phase === 'play' ? clamp(-this.intent.accel, 0, 1) : 0, sp01, P.boosting, dt, P.speed * 3.6); this.cv[0].setWall('charging', 1); if (this.phase === 'outro') this.cv[0].unseal(); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
     if (this.xr && !seated) { if (!this.recentred) { this.recentred = true; this.offset.copy(cam.position); this.vrYaw = yaw; } this.start.placeBeside(px, 0, pz, yaw, this.offset); hud.vrSeat = null; xr.showHands = true; xr.update(dt, false); engine.vignetteAmount = 0; }
     else if (this.xr) {
       // head-tracked and never rolled; classic turns are snap turns. Chase view sits above and behind for readability.
