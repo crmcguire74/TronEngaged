@@ -5,6 +5,7 @@ import type { Instance } from '../../engine/assets';
 import { CITY_PANO, PANORAMA, tuneEmissive } from '../../engine/assets';
 import { Crowd, gridFloor, hardlight, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { Ribbon } from '../../engine/vfx';
+import { Drones } from '../../engine/patrol';
 import { angleLerp, clamp, damp, lerp, smooth } from '../../engine/math';
 import { buildDiscConfig } from '../../progression/build';
 import { discFinalScore } from '../../progression/scoring';
@@ -30,10 +31,10 @@ export function revealMaterials(root: THREE.Object3D, uni: { value: number }, gl
   });
 }
 
-interface FighterView { id: number; inst: Instance; root: THREE.Group; reveal: { value: number }; marker: THREE.Sprite | null; markerCtx: CanvasRenderingContext2D | null; markerTex: THREE.CanvasTexture | null; hpShown: number; shield: THREE.Mesh; tell: THREE.Mesh; tellT: number; tellDur: number; throwT: number; hitT: number; props: { hand?: THREE.Object3D; back?: THREE.Object3D; shield?: THREE.Object3D }; ring: THREE.Mesh; height: number; late: boolean; hold: number; greeted: boolean; yaw?: number; dead?: boolean; deathT: number; deathDur?: number; burst?: boolean; baseY?: number; hx?: number; hz?: number; popT?: number; scrub?: boolean; run?: boolean; lean?: number }
+interface FighterView { travel?: boolean; id: number; inst: Instance; root: THREE.Group; reveal: { value: number }; marker: THREE.Sprite | null; markerCtx: CanvasRenderingContext2D | null; markerTex: THREE.CanvasTexture | null; hpShown: number; shield: THREE.Mesh; tell: THREE.Mesh; tellT: number; tellDur: number; throwT: number; hitT: number; props: { hand?: THREE.Object3D; back?: THREE.Object3D; shield?: THREE.Object3D }; ring: THREE.Mesh; height: number; late: boolean; hold: number; greeted: boolean; yaw?: number; dead?: boolean; deathT: number; deathDur?: number; burst?: boolean; baseY?: number; hx?: number; hz?: number; popT?: number; scrub?: boolean; run?: boolean; lean?: number }
 interface DiscView { id: number; root: THREE.Group; model: THREE.Object3D; ribbon: Ribbon; rise: Ribbon | null; glow: THREE.Mesh; rim: THREE.MeshBasicMaterial | null; mark: THREE.Sprite | null; color: number; hostile: boolean; shown: number }
 /** Rival discs are always this colour, whatever the rival's own colour: red means "this one can hurt you". */
-const HOSTILE = 0xff4018, HOMING = 0xff2bd0;
+const HOSTILE = 0xff4018, HOMING = 0xff2bd0, AMP = 0xffc23a;
 let reticleTex: THREE.CanvasTexture | null = null;
 /** A camera-facing bracket drawn round a rival disc, so it still reads when the disc itself is edge-on to you. */
 function reticle(): THREE.CanvasTexture {
@@ -55,12 +56,12 @@ interface PlatView { root: THREE.Group; ring: THREE.Mesh; surge: THREE.Mesh; sin
 
 export class DiscSession extends BaseSession {
   readonly mode = 'discs' as const; sim: DiscSim; private th: Theme; private intent = emptyIntent();
-  private fv = new Map<number, FighterView>(); private dv = new Map<number, DiscView>(); private pv: PlatView[] = []; private bv: THREE.Object3D[] = [];
-  private yaw = Math.PI; private pitch = -0.06; private crowd: Crowd; private sky: THREE.Mesh; private floor: THREE.Mesh; private wallMats: THREE.ShaderMaterial[] = []; private timed: THREE.ShaderMaterial[] = [];
+  private fv = new Map<number, FighterView>(); private dv = new Map<number, DiscView>(); private pv: PlatView[] = []; private bv: THREE.Object3D[] = []; private av: { g: THREE.Group; fill: THREE.MeshBasicMaterial; mast: THREE.Mesh }[] = []; private ampSeen = false;
+  private yaw = Math.PI; private pitch = -0.06; private crowd: Crowd; private drones!: Drones; private look = new THREE.Vector3(); private sky: THREE.Mesh; private floor: THREE.Mesh; private wallMats: THREE.ShaderMaterial[] = []; private timed: THREE.ShaderMaterial[] = [];
   private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3();
   private hopFade = false; private offset = new THREE.Vector3(); private recentred = false; private vrDisc: THREE.Object3D | null = null; private introDone = false; private bossName = ''; private totalEnemies: number; private interfere = false; private lastHp: number; private early: boolean; private threw = false; private shielded = false; private drawT = 9; private called = false; private eye = new THREE.Vector3(); private arrows: THREE.Mesh[] = []; private slowT = 0; private slowDur = 1; private slowMin = 1; private tickAt = 0;
 
-  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'pedestal', 'coliseum']; }
+  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'pedestal', 'coliseum', 'drone']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, seedSalt = 0) {
     super(ctx, tier, diff);
@@ -92,6 +93,8 @@ export class DiscSession extends BaseSession {
     // outer stadium: supplied coliseum shell + audience lights behind the hardlight walls
     if (ctx.assets.has('coliseum')) { const c = ctx.assets.instance('coliseum').root; c.scale.setScalar(0.42); c.position.y = A.floor - 3; c.traverse((o: any) => { if (o.isMesh) { o.castShadow = false; } }); W.add(c); }
     this.crowd = new Crowd(R + 7, -1, 9, 150, th, A.sides); W.add(this.crowd.mesh);
+    // broadcast drones circle just outside the hardlight walls, lenses on the player
+    this.drones = new Drones(ctx.assets, ctx.settings.quality === 'low' ? 2 : 3, th.accent, 1.1); W.add(this.drones.group);
     // platforms: supplied pedestal model sized to each analytic collision disc
     this.sim.platforms.forEach((p) => {
       const root = new THREE.Group(); const col = p.side === 0 ? ION : th.accent2 === ION ? 0xff8a3c : th.accent2;
@@ -103,6 +106,7 @@ export class DiscSession extends BaseSession {
       W.add(root); this.pv.push({ root, ring, surge, sink: 0, beam });
     });
     this.sim.barriers.forEach((_, i) => this.addBarrierView(i));
+    this.sim.amps.forEach(() => this.addAmpView());
     for (const f of this.sim.fighters) this.addFighter(f);
     // VR: the held disc sits in the tracked throwing hand
     this.vrDisc = ctx.assets.instance('disc:azure').root; this.vrDisc.visible = false; this.vrDisc.userData.shared = true;
@@ -116,6 +120,18 @@ export class DiscSession extends BaseSession {
     this.view(0, 1, ctx.input.actions);
   }
 
+  /** Amplifier ring: a gold hoop with inward chevrons and a faint membrane, so it reads as "throw through here". */
+  private addAmpView() {
+    const g = new THREE.Group(), gold = new THREE.MeshBasicMaterial({ color: AMP }), dim = new THREE.MeshBasicMaterial({ color: new THREE.Color(AMP).multiplyScalar(0.45) });
+    g.add(new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.07, 10, 56), gold), new THREE.Mesh(new THREE.TorusGeometry(1.42, 0.025, 6, 56), dim));
+    const fill = new THREE.Mesh(new THREE.CircleGeometry(1.2, 48), new THREE.MeshBasicMaterial({ color: AMP, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); g.add(fill);
+    const chev = new THREE.Shape(); chev.moveTo(0, 0); chev.lineTo(-0.16, 0.2); chev.lineTo(-0.09, 0.2); chev.lineTo(0, 0.09); chev.lineTo(0.09, 0.2); chev.lineTo(0.16, 0.2); chev.closePath();
+    const cg = new THREE.ShapeGeometry(chev); cg.translate(0, 0.98, 0);
+    for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(cg, gold); m.rotation.z = (i / 6) * Math.PI * 2; m.material = new THREE.MeshBasicMaterial({ color: AMP, side: THREE.DoubleSide }); g.add(m); }
+    // a slim mast down to the floor so the ring is anchored in space, not floating trivia
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 6), dim);
+    this.world.add(g, mast); this.av.push({ g, fill: fill.material as THREE.MeshBasicMaterial, mast });
+  }
   private addBarrierView(i: number) {
     const b = this.sim.barriers[i], d = b.def; let obj: THREE.Object3D;
     if (d.volatile) {
@@ -331,6 +347,7 @@ export class DiscSession extends BaseSession {
       case 'shift': audio.sfx('shift'); hud.toast('ARENA RECONFIGURING', 'warn'); break;
       case 'barrierBreak': { audio.sfx(e.volatile ? 'explosion' : 'shieldBreak', e); vfx.shatter(e.x, e.y, e.z, e.volatile ? 0xff5533 : 0xffb62e, 40, 0.5); break; }
       case 'barrierAdd': this.addBarrierView(e.index); break;
+      case 'amp': audio.sfx('boost', e, 1.2); vfx.ring(e.x, e.y, e.z, AMP, 0.6, 2.4, 0.35, { x: 0, y: 0, z: 1 }); vfx.sparks(e.x, e.y, e.z, AMP, 26, 9, 0.4); if (e.team === 0) { xr.pulse(xr.dominant, 0.4, 40); if (!this.ampSeen) { this.ampSeen = true; hud.toast('AMPLIFIED — FASTER, HARDER HIT', 'score'); } } else hud.toast('RIVAL DISC AMPLIFIED', 'danger'); break;
       case 'explosion': vfx.ring(e.x, e.y, e.z, 0xff8844, 0.5, e.r, 0.5); vfx.sparks(e.x, e.y, e.z, 0xffaa55, 90, 16, 0.9); vfx.flash(e.x, e.y, e.z, 0xff8844, 60); engine.addShake(0.8); break;
     }
   }
@@ -341,7 +358,7 @@ export class DiscSession extends BaseSession {
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, t = engine.elapsed, cam = engine.camera;
     for (const m of this.timed) { m.uniforms.uTime.value = t; if (m.uniforms.uFlash) m.uniforms.uFlash.value *= Math.exp(-6 * dt); }
     if (this.slowT > 0) { this.slowT -= dt; const k = clamp(1 - this.slowT / this.slowDur, 0, 1); this.timeScale = this.slowT <= 0 ? 1 : lerp(this.slowMin, 1, smooth(clamp((k - 0.45) / 0.55, 0, 1))); if (this.slowT <= 0) this.slowMin = 1; }
-    this.crowd.update(dt, t); vfx.update(dt); if (!this.xr && this.vrDisc) this.vrDisc.visible = false;
+    this.crowd.update(dt, t); this.drones.orbit(dt, 0, 4, 0, sim.cfg.arena.radius + 3.5, this.look.set(P.x, P.y + 1.2, P.z)); vfx.update(dt); if (!this.xr && this.vrDisc) this.vrDisc.visible = false;
     // platforms
     sim.platforms.forEach((p, i) => {
       const v = this.pv[i]; v.sink = damp(v.sink, p.state === 'down' ? 1 : 0, 5, dt); v.root.position.set(p.x, p.y - v.sink * 16, p.z); v.root.visible = v.sink < 0.97;
@@ -352,6 +369,7 @@ export class DiscSession extends BaseSession {
       if (warn) { sm.color.setHex(0xff2a2a); sm.opacity = 0.2 + 0.3 * Math.abs(Math.sin(t * 9)); } else if (p.surgeArmed) { sm.color.setHex(0xffe14a); sm.opacity = 0.18 + 0.3 * Math.abs(Math.sin(t * (10 + (1.5 - p.surge) * 14))); } else if (target) { sm.color.setHex(ION); sm.opacity = 0.1 + 0.07 * Math.sin(t * 5); } else sm.opacity = 0;
       (v.beam.material as THREE.MeshBasicMaterial).opacity = target ? 0.3 : 0.07; if (target) rm.color.setHex(0xffffff);
     });
+    sim.amps.forEach((a, i) => { const v = this.av[i]; if (!v) return; v.g.position.set(a.x, a.y, a.z); v.g.rotation.z = t * 0.6 + i; const k = a.flash / 0.5; v.g.scale.setScalar(1 + 0.25 * k); v.fill.opacity = 0.07 + 0.04 * Math.sin(t * 3 + i) + 0.4 * k; const base = sim.cfg.arena.floor, h = a.y - 1.25 - base; v.mast.scale.y = Math.max(0.01, h); v.mast.position.set(a.x, base + h / 2, a.z); });
     sim.barriers.forEach((b, i) => { const o = this.bv[i]; if (!o) return; o.visible = b.alive; if (!b.alive) return; o.position.set(b.x, b.y, b.z); o.rotation.y = b.yaw; if (b.def.volatile) { o.rotation.x = t * 0.9; o.scale.setScalar(1 + 0.12 * Math.sin(t * 7)); } else { const m = (o.children[0] as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms.uFlash.value = Math.max(m.uniforms.uFlash.value, b.flash > 0 ? 0.5 : 0); if (b.def.hp > 0) m.uniforms.uOpacity.value = 0.2 + 0.35 * (b.hp / b.def.hp); } });
     // fighters
     for (const f of sim.fighters) {
@@ -378,10 +396,12 @@ export class DiscSession extends BaseSession {
         continue;
       }
       const x = lerp(f.px, f.x, alpha), y = lerp(f.py, f.y, alpha), z = lerp(f.pz, f.z, alpha);
-      const self = f.isPlayer && this.xr; v.root.position.set(x, y, z); // a rival on the move turns to run that way, then turns back to face its target to throw or guard
-      const travel = !f.isPlayer && !f.winding && v.throwT <= 0 && !f.shieldUp && f.moving > 2.4 && f.dodgeT <= 0, face = travel ? Math.atan2(f.vx, f.vz) : f.yaw;
-      v.yaw = angleLerp(v.yaw ?? f.yaw, face, 1 - Math.exp(-(travel ? 9 : 14) * dt)); v.inst.root.rotation.y = v.yaw;
-      v.run = f.moving > (v.run ? 3 : 3.8); v.lean = damp(v.lean ?? 0, v.run && !f.isPlayer ? 0.09 : 0, 6, dt); v.inst.root.rotation.x = v.lean; v.inst.root.visible = !self; v.ring.visible = !self;
+      const self = f.isPlayer && this.xr; v.root.position.set(x, y, z);
+      // anyone on the move, player or rival, turns to run the way they are going, then turns back to face the target
+      // to throw or guard (hysteresis keeps a fighter from flicking between the two at walking pace)
+      const travel = !f.winding && v.throwT <= 0 && !f.shieldUp && f.dodgeT <= 0 && f.moving > (v.travel ? 1.3 : 2), face = travel ? Math.atan2(f.vx, f.vz) : f.yaw; v.travel = travel;
+      v.yaw = angleLerp(v.yaw ?? f.yaw, face, 1 - Math.exp(-(travel ? 10 : 14) * dt)); v.inst.root.rotation.y = v.yaw;
+      v.run = f.moving > (v.run ? 3 : 3.8); v.lean = damp(v.lean ?? 0, v.run && travel ? 0.09 : 0, 6, dt); v.inst.root.rotation.x = v.lean; v.inst.root.visible = !self; v.ring.visible = !self;
       if (f.spawnT > 0 && this.introDone && v.late) { v.reveal.value = f.y - 0.2 + (1 - f.spawnT / 1.4) * 2.8 * f.arch.scale; if (Math.random() < 0.6) vfx.motes(f.x, f.y, f.z, f.arch.tint, 0.6, 2, 2); } else if (this.introDone) v.reveal.value = 50;
       // animation state from simulation state
       v.throwT -= dt; v.hitT -= dt; v.hold -= dt; const I = v.inst;
@@ -425,6 +445,8 @@ export class DiscSession extends BaseSession {
         v.mark!.scale.setScalar(lerp(1.05, lerp(3.4, 1.15, urge), v.shown));
         if (bearing) incoming.push({ x, y, z, tca, homing });
       } else { v.glow.scale.setScalar(1.1); gm.color.setHex(d.parried ? 0xffffff : v.color); }
+      // amplified: a gold corona that throbs, whichever side threw it
+      if (d.amped && d.state === 'flying') { gm.color.setHex(AMP); gm.opacity = 0.55; v.glow.scale.setScalar(1.6 + 0.3 * Math.sin(t * 30)); }
       if (d.team === 1 && d.state === 'flying') hums.push({ x, y, z, pitch: homing ? 330 : 220, gain: 0.05 });
     }
     audio.hums(hums.slice(0, 4));

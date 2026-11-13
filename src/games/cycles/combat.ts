@@ -17,10 +17,12 @@ export interface Cycle {
   queue: number[]; sinceTurn: number; turnT: number;
   /** Flat [x,z,...] trail vertices; the live segment runs from the last vertex to (x,z). */
   trail: number[]; trailGone: boolean; deathT: number;
-  power: PowerKind | null; phaseT: number; shockT: number; grind: boolean;
+  power: PowerKind | null; phaseT: number; shockT: number; grind: boolean; ion?: boolean;
   ai: CycleAi | null;
 }
 export type PowerKind = 'phase' | 'purge' | 'shock' | 'boost';
+/** Ion lane: a long floor strip. Riding along it (not across) speeds you up and charges boost — for anyone. */
+export interface IonLane { x: number; z: number; len: number; hw: number; axis: 0 | 1 }
 export interface Obstacle { x: number; z: number; hx: number; hz: number; state: 'solid' | 'warn' | 'off'; t: number; dyn: boolean; kind: 'pillar' | 'pit' }
 export interface Pickup { x: number; z: number; kind: PowerKind; alive: boolean; id: number }
 
@@ -28,7 +30,7 @@ const MIN_TURN = 0.9, TRAIL_HW = 0.14, BODY_HW = 0.22;
 
 export class CombatSim {
   readonly cfg: CombatConfig; readonly rng: Rng;
-  cycles: Cycle[] = []; obstacles: Obstacle[] = []; pickups: Pickup[] = []; events: SimEvent[] = [];
+  cycles: Cycle[] = []; obstacles: Obstacle[] = []; pickups: Pickup[] = []; lanes: IonLane[] = []; events: SimEvent[] = [];
   time = 0; state: 'active' | 'won' | 'lost' = 'active';
   half: number; readonly half0: number; readonly gw: number; grid: Uint8Array; stamp: Uint32Array; stampId = 0;
   stats: CycleStats = { trapKills: 0, rivalsDown: 0, grindMeters: 0, nearMisses: 0, time: 0, score: 0, pickups: 0 };
@@ -51,6 +53,8 @@ export class CombatSim {
       this.cycles.push(c);
     }
     this.player = this.cycles[0];
+    // ion lanes: a cross of fast strips (offset so they do not run down the spawn lanes)
+    if (cfg.modifiers.includes('ion-lanes')) { const o = Math.round(H * 0.34); this.lanes.push({ x: 0, z: o, len: H * 0.82, hw: 2.2, axis: 0 }, { x: 0, z: -o, len: H * 0.82, hw: 2.2, axis: 0 }); if (cfg.modifiers.includes('ion-grid')) this.lanes.push({ x: o + 6, z: 0, len: H * 0.6, hw: 2.2, axis: 1 }, { x: -o - 6, z: 0, len: H * 0.6, hw: 2.2, axis: 1 }); }
     // static pillars, kept clear of spawn lanes
     for (let i = 0; i < cfg.pillars; i++) {
       for (let tries = 0; tries < 30; tries++) {
@@ -74,7 +78,8 @@ export class CombatSim {
   aliveRivals() { let n = 0; for (const c of this.cycles) if (!c.isPlayer && c.alive) n++; return n; }
 
   step(dt: number, intent: CycleIntent) {
-    if (this.state !== 'active') return;
+    // finished: freeze in place (prev = current), or the view keeps blending between the last two steps and everything shakes
+    if (this.state !== 'active') { for (const c of this.cycles) { c.px = c.x; c.pz = c.z; } return; }
     this.time += dt; this.stats.time = this.time; this.nearCd -= dt;
     this.stepArena(dt);
     for (const c of this.cycles) {
@@ -100,7 +105,10 @@ export class CombatSim {
     const canBoost = it.boost && c.boost > 0.02;
     if (canBoost !== c.boosting) { c.boosting = canBoost; this.events.push({ type: 'boost', id: c.id, on: canBoost }); }
     if (c.boosting) c.boost = Math.max(0, c.boost - 0.46 * dt); else c.boost = Math.min(1, c.boost + 0.06 * dt);
-    const target = this.cfg.speed * (it.accel > 0.2 ? 1.28 : it.accel < -0.2 ? 0.66 : 1) * (c.boosting ? 1.8 : 1) * (c.shockT > 0 ? 0.6 : 1);
+    let ion = false; for (const ln of this.lanes) if (c.dir % 2 === ln.axis && (ln.axis === 0 ? Math.abs(c.z - ln.z) < ln.hw && Math.abs(c.x - ln.x) < ln.len : Math.abs(c.x - ln.x) < ln.hw && Math.abs(c.z - ln.z) < ln.len)) ion = true;
+    if (ion !== c.ion) { c.ion = ion; if (c.isPlayer) this.events.push({ type: 'ion', on: ion }); }
+    if (ion) c.boost = Math.min(1, c.boost + 0.22 * dt);
+    const target = this.cfg.speed * (it.accel > 0.2 ? 1.28 : it.accel < -0.2 ? 0.66 : 1) * (c.boosting ? 1.8 : 1) * (c.shockT > 0 ? 0.6 : 1) * (ion ? 1.35 : 1);
     c.speed = approach(c.speed, target, 34 * dt);
     const [dx, dz] = DIRS[c.dir]; const dist = c.speed * dt;
     const nx = c.x + dx * dist, nz = c.z + dz * dist;

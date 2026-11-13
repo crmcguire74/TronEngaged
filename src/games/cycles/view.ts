@@ -15,14 +15,19 @@ export const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 export const playerTrail = (ctx: Ctx) => cosmetic('trail:' + ctx.settings.trail)?.color ?? 0x4fe3ff;
 /** Generated models arrive at their own scale and facing: uniform scale, lift so the tyres sit on the floor, half-turn. */
 const FIT: Record<string, { s: number; y: number; turn: number }> = { wraith: { s: 2.9, y: 0.196, turn: Math.PI } };
-const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson' };
-export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'console', 'hands']).filter(Boolean))];
+/** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
+const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt' };
+export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'cockpit2', 'cockpit3', 'console', 'hands']).filter(Boolean))];
 /** Rider eye point relative to the cycle origin (metres): x right-handed, y up, z forward. */
 export const EYE = { y: 1.27, z: -0.2 };
+const Z_AXIS = new THREE.Vector3(0, 0, 1), ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
 
 /** A cycle with its rider: supplied vehicle model, materialise effect, wheel/drive animation and cosmetic lean. */
 export class CycleView {
   readonly root = new THREE.Group(); readonly body = new THREE.Group(); readonly reveal = { value: 50 }; private inst: Instance; private rider: Instance | null = null; lean = 0; private yaw = 0; glow: THREE.Mesh; private cockpit: THREE.Object3D | null = null; private fp = false; private wheels: { o: THREE.Object3D; r: number }[] = []; private lastX = 0; private lastZ = 0; private placed = false; private trims: THREE.MeshStandardMaterial[] = []; private fireT = 0; private power = { value: 1 }; private riderKey = ''; private walker: Instance | null = null; private walkReveal = { value: -1 }; private walkT = 0; private wFrom = new THREE.Vector3(); private wTo = new THREE.Vector3();
+  private yoke: THREE.Object3D | null = null; private canopy: THREE.Object3D | null = null; private canopyK = 0; private canopyTarget = 0; private sealAt = -9; private canopyMoving = false; private lamps: THREE.MeshBasicMaterial[] = []; private lampCol = new THREE.Color();
+  private dials: { o: THREE.Object3D; q0: THREE.Quaternion }[] = []; private dialV = [0, 0]; private qz = new THREE.Quaternion();
+  private gloves: { g: GloveHand; pivot: THREE.Group; wrist: THREE.Object3D; arm: THREE.Mesh; axis: THREE.Vector3; elbow: THREE.Vector3; side: number }[] = []; private steerV = 0; private yokeY = 0; private throttleV = 0; private brakeV = 0; private tv = new THREE.Vector3(); private tv2 = new THREE.Vector3();
   /** False while the rider is still on foot during the start sequence. */ mounted = true;
   /** Before the start: engine idling, canopy open where the model has one. */ parked = false;
   constructor(private ctx: Ctx, model: string, readonly color: number, riderKey?: string) {
@@ -31,9 +36,6 @@ export class CycleView {
     this.inst.root.traverse((o: any) => {
       if (o.isMesh && o.material?.name === 'Trim') o.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.5) });
       if (o.name.startsWith('Wheel') && o.userData.radius) this.wheels.push({ o, r: o.userData.radius });
-      // the supplied canopy closes over the empty rear cabin while the rider sits ahead of it, so it read as glass
-      // floating behind the rider: these machines run open-top
-      if (/^Canopy/.test(o.name)) o.visible = false;
     });
     if (!this.inst.missing && !FIT[model]) cleanLines(this.inst.root, color, this.power);
     if (!this.inst.missing) revealMaterials(this.inst.root, this.reveal, new THREE.Color(color).multiplyScalar(0.9));
@@ -43,9 +45,10 @@ export class CycleView {
       accentTint(r, color);
     }
     this.body.add(this.inst.root); this.inst.play('Drive', 0);
-    // low quality (standalone headsets): rival riders are skipped to keep triangle counts down
-    const rk = riderKey ?? (ctx.settings.quality === 'low' ? undefined : RIDER[model]);
-    if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = ctx.assets.instance(rk, { cloneMaterials: true }); revealMaterials(this.rider.root, this.reveal, new THREE.Color(color)); this.rider.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); this.rider.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = this.rider.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(this.rider.root); }
+    const rk = riderKey ?? RIDER[model];
+    if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = ctx.assets.instance(rk, { cloneMaterials: true }); revealMaterials(this.rider.root, this.reveal, new THREE.Color(color)); this.rider.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (this.inst.actions.CanopyClose) this.rider.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ this.rider.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = this.rider.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(this.rider.root); }
+    // rivals: a thin unlit outline in their colour, so a dark rider on a dark machine still reads at a distance (and without bloom)
+    if (this.rider && !riderKey) outlineRider(this.rider.root, color);
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, map: glowTex() })); this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.03;
     this.root.add(this.body, this.glow);
   }
@@ -75,6 +78,7 @@ export class CycleView {
    */
   firstPerson(on: boolean) {
     if (on === this.fp) return; this.fp = on;
+    if (on && !this.cockpit && (this.ctx.assets.has('cockpit3') || this.ctx.assets.has('cockpit2'))) { this.cockpit = this.buildCockpit(); this.root.add(this.cockpit); }
     if (on && !this.cockpit) {
       const assets = this.ctx.assets, c = assets.instance('cockpit', { cloneMaterials: true }).root, sculpted = assets.has('console');
       c.traverse((o: any) => {
@@ -108,8 +112,83 @@ export class CycleView {
     if (this.cockpit) this.cockpit.visible = on;
     this.inst.root.visible = !on; this.glow.visible = !on; if (this.rider) this.rider.root.visible = !on && this.mounted;
   }
+  /**
+   * The Blender-built cockpit (scripts/blender/build_cockpit_v2.py): lacquered bodywork, an alloy binnacle carrying the
+   * live display, light-wall lamps either side of it, a yoke that rolls with the steering with the rider's gloved hands
+   * on its grips, and a glass canopy on a rear hinge.
+   */
+  private buildCockpit() {
+    const assets = this.ctx.assets, c = assets.instance(assets.has('cockpit3') ? 'cockpit3' : 'cockpit2', { cloneMaterials: true }).root;
+    c.traverse((o: any) => {
+      if (!o.isMesh) return; o.castShadow = false; o.frustumCulled = false; const m = o.material, name = m?.name;
+      if (name === 'Screen') o.material = new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, toneMapped: false });
+      else if (name === 'Trim') { m.color.setScalar(0); m.emissive = new THREE.Color(this.color); m.emissiveIntensity = 2.2; this.trims.push(m); }
+      else if (name === 'WallLamp') { o.material = new THREE.MeshBasicMaterial({ color: 0x1a2430, toneMapped: false }); this.lamps.push(o.material); }
+      else if (name === 'Glass') { o.material = new THREE.MeshStandardMaterial({ name: 'Glass', color: 0xcfeaff, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.09, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 3 }); o.renderOrder = 6; }
+      // clear-coated black, mirror chrome and a reflective black-glass layer over the live display (cockpit v3)
+      else if (name === 'Body') o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x040506, metalness: 0.2, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.035, envMapIntensity: 1.35 });
+      else if (name === 'Chrome') o.material = new THREE.MeshStandardMaterial({ name, color: 0xe9eef3, metalness: 1, roughness: 0.07, envMapIntensity: 2.6 });
+      else if (name === 'Lens') o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x020304, metalness: 0, roughness: 0.08, clearcoat: 1, envMapIntensity: 0.9 });
+      else if (name === 'DisplayGlass') { o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x000000, metalness: 0, roughness: 0.02, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.3, depthWrite: false, envMapIntensity: 2.4 }); o.renderOrder = 3; }
+      else if (name === 'Needle') o.material = new THREE.MeshBasicMaterial({ color: 0xf4fbff, toneMapped: false });
+      else if (name === 'Rubber') { m.roughness = 0.62; m.envMapIntensity = 0.8; }
+      else if (name === 'Alloy') m.envMapIntensity = 1.4;
+    });
+    c.updateMatrixWorld(true); this.yoke = c.getObjectByName('Yoke') ?? null; this.yokeY = this.yoke?.position.y ?? 0; this.canopy = c.getObjectByName('Canopy') ?? null; this.dials = ['DialL', 'DialR'].map((n) => c.getObjectByName(n)).filter(Boolean).map((o) => ({ o: o!, q0: o!.quaternion.clone() })); this.canopyK = this.canopyTarget === 1 && this.ctx.engine.elapsed - this.sealAt < 0.5 ? 0 : this.canopyTarget; this.poseCanopy();
+    if (this.yoke && assets.has('hands')) for (const sx of [1, -1]) {
+      // grip ends in cockpit space (glTF: x, y up, z forward), carried into the yoke's frame so the hands roll with it
+      const a = new THREE.Vector3(sx * 0.3, 0.99, 0.42), b = new THREE.Vector3(sx * 0.39, 0.985, 0.36), mid = this.yoke.worldToLocal(a.clone().lerp(b, 0.5));
+      const along = a.clone().sub(b).normalize(), fwd = new THREE.Vector3(0, 0.12, 1).normalize(), fingers = fwd.clone().addScaledVector(along, -fwd.dot(along)).normalize().add(fwd).normalize();
+      const pivot = new THREE.Group(); pivot.position.copy(mid); this.yoke.add(pivot);
+      const g = new GloveHand(assets, sx > 0 ? 'left' : 'right', this.color); g.gripBar(new THREE.Vector3(), fingers, along); pivot.add(g.root);
+      const wrist = new THREE.Object3D(); wrist.position.copy(g.root.position).addScaledVector(fingers, -0.085); pivot.add(wrist);
+      // armoured forearm with a lit cuff at the wrist
+      // sculpted gauntlet: gloss black, a chrome band, a neon spine along the top and a lit cuff at the wrist
+      const prof = [[0.0, -ARM / 2], [0.05, -ARM / 2], [0.058, -0.16], [0.057, -0.04], [0.05, 0.09], [0.041, 0.19], [0.043, ARM / 2 - 0.006], [0.0, ARM / 2]].map(([r, y]) => new THREE.Vector2(r, y));
+      const arm = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), new THREE.MeshPhysicalMaterial({ color: 0x050608, metalness: 0.35, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.6 }));
+      const neon = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.color).multiplyScalar(1.4) });
+      const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.043, 0.0045, 6, 32), neon); cuff.rotation.x = Math.PI / 2; cuff.position.y = ARM / 2 - 0.03; arm.add(cuff);
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.0515, 0.006, 8, 32), new THREE.MeshStandardMaterial({ color: 0xe9eef3, metalness: 1, roughness: 0.07, envMapIntensity: 2.6 })); band.rotation.x = Math.PI / 2; band.position.y = 0.08; arm.add(band);
+      // the forearm's local -Z ends up on top once it is aimed forward from the elbow
+      const spine = new THREE.Mesh(new THREE.BoxGeometry(0.008, ARM * 0.55, 0.004), neon); spine.position.set(0, -0.06, -0.0575); arm.add(spine);
+      arm.castShadow = false; c.add(arm);
+      this.gloves.push({ g, pivot, wrist, arm, axis: along, elbow: new THREE.Vector3(sx * 0.27, 0.9, -0.08), side: sx });
+    }
+    this.driveArms(); return c;
+  }
+  private poseCanopy() { if (this.canopy) { const e = this.canopyK * this.canopyK * (3 - 2 * this.canopyK); this.canopy.rotation.x = (1 - e) * CANOPY_OPEN; } }
+  private driveArms() {
+    for (const h of this.gloves) {
+      const w = this.cockpit ? this.cockpit.worldToLocal(h.wrist.getWorldPosition(this.tv)) : h.wrist.getWorldPosition(this.tv);
+      const dir = this.tv2.copy(w).sub(h.elbow).normalize(); h.arm.position.copy(w).addScaledVector(dir, -ARM / 2); h.arm.quaternion.setFromUnitVectors(UP, dir);
+    }
+  }
+  /**
+   * First-person controls, every frame: the yoke rolls with the steering, the right grip twists open with the throttle,
+   * both hands bear down under braking, and the bars buzz with speed and boost.
+   */
+  drive(steer: number, throttle: number, brake: number, speed01: number, boosting: boolean, dt: number) {
+    if (!this.fp || !this.yoke) return;
+    this.steerV = damp(this.steerV, clamp(steer, -1, 1), 9, dt); this.throttleV = damp(this.throttleV, clamp(throttle, 0, 1), 7, dt); this.brakeV = damp(this.brakeV, clamp(brake, 0, 1), 9, dt);
+    const tt = this.ctx.engine.elapsed, buzz = (0.0025 + speed01 * 0.004 + (boosting ? 0.006 : 0)) * Math.sin(tt * 71);
+    this.yoke.rotation.z = this.steerV * 0.34 + buzz; this.yoke.position.y = this.yokeY + buzz * 0.4 - this.brakeV * 0.008;
+    for (const h of this.gloves) { h.pivot.quaternion.setFromAxisAngle(h.axis, h.side < 0 ? -this.throttleV * 0.3 : 0); h.g.pose(0.88 + this.brakeV * 0.12); }
+    this.driveArms();
+    // gauges: left reads speed, right reads drive (throttle, pinned while boosting); needles sweep 270° clockwise from bottom-left
+    const target = [clamp(speed01, 0, 1), boosting ? 1 : this.throttleV * 0.8];
+    this.dials.forEach((d, i) => { this.dialV[i] = damp(this.dialV[i], target[i], 6, dt); const a = (-135 + 270 * this.dialV[i] + buzz * 300) * (Math.PI / 180); d.o.quaternion.copy(d.q0).multiply(this.qz.setFromAxisAngle(Z_AXIS, a)); });
+  }
+  /** Light-wall lamps beside the display: off, recharging (k: 0..1), ready, or laying a wall (bright, strobing). */
+  setWall(state: 'none' | 'charging' | 'ready' | 'on', k = 0) {
+    if (!this.lamps.length) return; const tt = this.ctx.engine.elapsed;
+    const col = state === 'on' ? this.lampCol.set(this.color).multiplyScalar(Math.sin(tt * 22) > 0 ? 2.2 : 1.2) : state === 'ready' ? this.lampCol.set(0x2aff8a).multiplyScalar(0.9 + 0.3 * Math.sin(tt * 4)) : state === 'charging' ? this.lampCol.set(0x1a2430).lerp(LAMP_DIM.set(this.color), k * 0.35) : this.lampCol.set(0x1a2430);
+    for (const m of this.lamps) m.color.copy(col);
+    for (const m of this.trims) m.emissiveIntensity = 2.2 * this.power.value * (state === 'on' ? 1.6 + 0.6 * Math.sin(tt * 22) : 1);
+  }
+  /** End of the event: the canopy lifts. */
+  unseal() { if (this.canopyTarget !== 0) { this.canopyTarget = 0; if (this.inst.actions.CanopyOpen) { this.inst.play('CanopyOpen', 0.1, true); this.fireT = this.inst.actions.CanopyOpen.getClip().duration; this.parked = true; } } }
   /** Start sequence, step 1: the canopy closes over the rider (models that have one). */
-  seal() { if (this.inst.actions.CanopyClose) { this.inst.play('CanopyClose', 0.1, true); this.fireT = this.inst.actions.CanopyClose.getClip().duration; } }
+  seal() { if (this.canopyTarget !== 1) { this.canopyTarget = 1; this.sealAt = this.ctx.engine.elapsed; } if (this.inst.actions.CanopyClose) { this.inst.play('CanopyClose', 0.1, true); this.fireT = this.inst.actions.CanopyClose.getClip().duration; } }
   /** Start sequence, step 2: the drive fires and the machine is released. */
   launch() { this.parked = false; if (this.inst.actions.Fire) { this.inst.play('Fire', 0.05, true); this.fireT = Math.min(0.6, this.inst.actions.Fire.getClip().duration); } }
   /** First-person cockpit lighting level, 0..1: the instruments power up during the start sequence. */
@@ -122,6 +201,7 @@ export class CycleView {
     this.root.position.set(x, y, z); this.yaw = snap ? yaw : angleLerp(this.yaw, yaw, 1 - Math.exp(-18 * dt)); this.root.rotation.y = this.yaw;
     this.lean = damp(this.lean, 0, snap ? 7 : 0, dt); this.body.rotation.z = this.lean; this.body.rotation.x = pitch; if (this.cockpit) this.cockpit.rotation.x = pitch;
     this.fireT -= dt;
+    if (this.canopy && this.canopyK !== this.canopyTarget) { if (!this.canopyMoving && this.fp) this.ctx.audio.sfx('canopy'); this.canopyMoving = true; this.canopyK = this.canopyTarget > this.canopyK ? Math.min(this.canopyTarget, this.canopyK + dt / 0.9) : Math.max(this.canopyTarget, this.canopyK - dt / 0.9); this.poseCanopy(); } else this.canopyMoving = false;
     if (this.fireT <= 0) { const a = this.parked ? (this.inst.actions.CanopyOpenIdle ? 'CanopyOpenIdle' : 'Idle') : this.inst.actions.DriveFast && speed01 > 0.75 ? 'DriveFast' : 'Drive'; this.inst.play(a, 0.3); if (!this.parked && this.inst.actions[a]) this.inst.actions[a].timeScale = 0.4 + speed01 * 1.6; }
     this.inst.mixer?.update(dt);
   }
@@ -234,4 +314,12 @@ export class StartSequence {
     const rig = this.ctx.engine.rig, fx = Math.sin(yaw), fz = Math.cos(yaw), sx = px + fz * 4.4 - fx * 3, sz = pz - fx * 4.4 - fz * 3;
     rig.rotation.set(0, Math.atan2(-(px - sx), -(pz - sz)), 0); const off = this.tmp.copy(offset).setY(0).applyQuaternion(rig.quaternion); rig.position.set(sx - off.x, py + this.ctx.settings.vr.height, sz - off.z);
   }
+}
+
+/** Adds a back-face shell, pushed out along the normals, to every skinned body mesh: a crisp neon silhouette that follows the animation. */
+function outlineRider(root: THREE.Object3D, color: number) {
+  const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.15), side: THREE.BackSide });
+  mat.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed += normalize(objectNormal) * 0.016;'); };
+  const meshes: THREE.SkinnedMesh[] = []; root.traverse((o: any) => { if (o.isSkinnedMesh && !/disc|shield|prop/i.test(o.name + (o.material?.name ?? ''))) meshes.push(o); });
+  for (const m of meshes) { const sh = new THREE.SkinnedMesh(m.geometry, mat); sh.bind(m.skeleton, m.bindMatrix); sh.position.copy(m.position); sh.quaternion.copy(m.quaternion); sh.scale.copy(m.scale); sh.frustumCulled = false; sh.renderOrder = -1; sh.castShadow = false; m.parent!.add(sh); }
 }

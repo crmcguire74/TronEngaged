@@ -34,14 +34,17 @@ export interface Fighter {
 export interface Disc {
   id: number; owner: number; team: 0 | 1; kind: string; state: 'held' | 'flying' | 'returning';
   x: number; y: number; z: number; px: number; py: number; pz: number; vx: number; vy: number; vz: number;
-  bounces: number; age: number; homing: number; target: number; hit: Set<number>; parried: boolean;
+  bounces: number; age: number; homing: number; target: number; hit: Set<number>; parried: boolean; /** passed through an amplifier ring this flight */ amped?: boolean;
 }
+/** Amplifier ring: a gold gate hanging over the gap. A disc thrown through it speeds up and hits harder — for either side. */
+export interface AmpRing { x: number; y: number; z: number; r: number; bx: number; sway: number; phase: number; flash: number }
 export interface DiscSimConfig {
   arena: ArenaDef; seed: number; waves: readonly (readonly EnemySpawn[])[]; modifiers: readonly string[];
   playerHp: number; playerShield: number; playerDiscs: number;
   aiSkill: number; hazardMul: number; maxAttackers: number; discSpeedMul: number;
 }
 
+const AMP_SPEED = 1.3, AMP_DAMAGE = 1.6;
 const FIGHTER_R = 0.5, DISC_R = 0.2, MAX_BOUNCES = 3, RETURN_SPEED = 34, ENERGY_LOSS = 0.06;
 export const DISC_DAMAGE = 25;
 const seg = { s: 0, t: 0 };
@@ -56,7 +59,7 @@ export class DiscSim {
   stats: DiscStats = { throws: 0, hits: 0, ricochetHits: 0, parries: 0, kills: 0, fallKills: 0, damageTaken: 0, time: 0, maxCombo: 0, score: 0 };
   combo = 0; comboT = 0; wave = 0; waveDelay = 0;
   interfereT = 0; surgeOn = false; surgeTimer = 6; shiftTimer = 0; shiftIdx = 0; shiftAuto = 0; collapseOn: boolean;
-  walls: { nx: number; nz: number }[];
+  walls: { nx: number; nz: number }[]; amps: AmpRing[] = [];
   private nextId = 1; private ambientInterfere = 0;
   player!: Fighter;
 
@@ -70,6 +73,7 @@ export class DiscSim {
     this.shiftAuto = cfg.modifiers.includes('rapid-shift') ? 10 : cfg.modifiers.includes('shifting') ? 20 : 0;
     this.shiftTimer = this.shiftAuto;
     this.ambientInterfere = cfg.modifiers.includes('interference') ? 14 : 0;
+    if (cfg.modifiers.includes('amp')) { const n = cfg.modifiers.includes('amp-3') ? 3 : 2; for (let i = 0; i < n; i++) { const bx = n === 3 ? (i - 1) * 7 : (i ? 4.5 : -4.5); this.amps.push({ x: bx, y: 2.3 + (i % 2) * 0.9, z: 3.2, r: 1.25, bx, sway: n === 3 ? 1.6 : 2.6, phase: i * 2.2, flash: 0 }); } }
     const home = this.platforms.findIndex((p) => p.side === 0);
     const P = this.platforms[home];
     this.player = this.makeFighter(0, 'player', { ...ARCHETYPES.sentinel, label: 'Runner', hp: cfg.playerHp, speed: 6.2, throwSpeed: 32, discs: cfg.playerDiscs }, P.x, P.y, P.z, home);
@@ -125,10 +129,11 @@ export class DiscSim {
 
   // ---------------------------------------------------------------- step
   step(dt: number, playerIntent: DiscIntent) {
-    if (this.state !== 'active') { this.stepDiscs(dt); return; }
+    if (this.state !== 'active') { for (const f of this.fighters) { f.px = f.x; f.py = f.y; f.pz = f.z; } this.stepDiscs(dt); return; }
     this.time += dt; this.stats.time = this.time;
     if (this.comboT > 0) { this.comboT -= dt; if (this.comboT <= 0) this.combo = 0; }
     this.stepArena(dt);
+    for (const a of this.amps) { a.x = a.bx + Math.sin(this.time * 0.42 + a.phase) * a.sway; a.flash = Math.max(0, a.flash - dt); }
     for (const f of this.fighters) {
       if (!f.alive) continue;
       f.px = f.x; f.py = f.y; f.pz = f.z;
@@ -337,7 +342,7 @@ export class DiscSim {
     if (!d) return;
     const speed = (f.arch.throwSpeed * (0.82 + 0.3 * charge)) * power * (f.isPlayer ? 1 : this.cfg.discSpeedMul);
     const a = this.cfg.arena;
-    d.state = 'flying'; d.team = f.team; d.parried = false; d.bounces = 0; d.age = 0; d.hit.clear();
+    d.state = 'flying'; d.team = f.team; d.parried = false; d.amped = false; d.bounces = 0; d.age = 0; d.hit.clear();
     d.x = f.x + f.ax * 0.75; d.y = clamp(f.y + 1.4 + f.ay * 0.3, a.floor + 0.5, a.ceiling - 0.5); d.z = f.z + f.az * 0.75;
     if (it && it.ox !== undefined) { const rx = it.ox - f.x, ry = it.oy! - (f.y + 1.3), rz = it.oz! - f.z, rl = Math.hypot(rx, ry, rz), k = rl > 1.3 ? 1.3 / rl : 1; d.x = f.x + rx * k; d.y = clamp(f.y + 1.3 + ry * k, a.floor + 0.5, a.ceiling - 0.5); d.z = f.z + rz * k; }
     d.px = d.x; d.py = d.y; d.pz = d.z;
@@ -359,7 +364,7 @@ export class DiscSim {
       d.age += dt;
       if (d.state === 'returning') {
         const tx = owner.x - d.x, ty = owner.y + 1.3 - d.y, tz = owner.z - d.z, l = Math.hypot(tx, ty, tz);
-        if (l < 0.8 || l < RETURN_SPEED * dt) { d.state = 'held'; d.team = owner.team; d.parried = false; this.events.push({ type: 'catch', id: owner.id, disc: d.id }); continue; }
+        if (l < 0.8 || l < RETURN_SPEED * dt) { d.state = 'held'; d.team = owner.team; d.parried = false; d.amped = false; this.events.push({ type: 'catch', id: owner.id, disc: d.id }); continue; }
         d.vx = (tx / l) * RETURN_SPEED; d.vy = (ty / l) * RETURN_SPEED; d.vz = (tz / l) * RETURN_SPEED;
         d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt; continue;
       }
@@ -437,6 +442,14 @@ export class DiscSim {
         if (bHit && bHit.def.hp > 0) { bHit.hp--; bHit.flash = 0.25; if (bHit.hp <= 0) this.breakBarrier(bHit, d.team); }
         if (d.bounces > MAX_BOUNCES) { d.state = 'returning'; this.events.push({ type: 'spent', disc: d.id }); }
       }
+      if (d.state === 'flying' && !d.amped) for (const a of this.amps) {
+        // crossed the ring's plane this step, inside the hoop
+        if ((d.pz - a.z) * (d.z - a.z) > 0 || d.pz === d.z) continue;
+        const t = (a.z - d.pz) / (d.z - d.pz), hx = d.px + (d.x - d.px) * t - a.x, hy = d.py + (d.y - d.py) * t - a.y;
+        if (hx * hx + hy * hy > a.r * a.r) continue;
+        d.amped = true; d.vx *= AMP_SPEED; d.vy *= AMP_SPEED; d.vz *= AMP_SPEED; d.age = Math.min(d.age, 1.2); a.flash = 0.5;
+        this.events.push({ type: 'amp', disc: d.id, team: d.team, x: a.x, y: a.y, z: a.z }); break;
+      }
       if (d.state === 'flying' && d.age > 3.6) d.state = 'returning';
     }
     // disc-on-disc deflection
@@ -479,13 +492,13 @@ export class DiscSim {
     }
     d.hit.add(f.id);
     const owner = this.fighter(d.owner);
-    const dmg = DISC_DAMAGE * (1 + 0.25 * d.bounces) * (d.parried ? 1.3 : 1);
+    const dmg = DISC_DAMAGE * (1 + 0.25 * d.bounces) * (d.parried ? 1.3 : 1) * (d.amped ? AMP_DAMAGE : 1);
     this.events.push({ type: 'hit', id: f.id, by: d.owner, x: d.x, y: d.y, z: d.z, dx, dz, bounces: d.bounces, parried: d.parried });
     const byPlayer = (owner?.isPlayer && !d.parried) || (d.parried && d.team === 0);
     if (byPlayer && f.team === 1) {
       this.stats.hits++; if (d.bounces > 0) this.stats.ricochetHits++;
       this.combo++; this.comboT = DISC_POINTS.comboWindow; this.stats.maxCombo = Math.max(this.stats.maxCombo, this.combo);
-      this.addScore(discHitScore(d.bounces, this.combo), d.bounces > 0 ? `Ricochet ×${d.bounces}` : 'Direct hit');
+      this.addScore(Math.round(discHitScore(d.bounces, this.combo) * (d.amped ? 1.5 : 1)), d.amped ? 'Amplified hit' : d.bounces > 0 ? `Ricochet ×${d.bounces}` : 'Direct hit');
     }
     this.damage(f, dmg, dx * 6.5, dz * 6.5, 'disc');
     d.state = 'returning';

@@ -114,6 +114,7 @@ export class Hud implements HudApi {
    * (DOM overlays do not render inside a WebXR session). Redrawn at ~12 Hz.
    */
   drawVR(dt: number): boolean {
+    this.root.classList.toggle('cockpit', this.vrMode === 'dash');
     this.vrT -= dt; if (this.vrT > 0) return false; this.vrT = 0.08;
     const c = this.vrCanvas.getContext('2d')!, W = 1024, H = 512, d = this.data; c.clearRect(0, 0, W, H); this.vrTexture.needsUpdate = true;
     c.fillStyle = 'rgba(3,7,12,0.94)'; c.fillRect(0, 0, W, H); if (!this.mode || !d.tier) return true;
@@ -140,6 +141,13 @@ export class Hud implements HudApi {
       else { stat(d.solo ? 'TIME' : 'PLACE', d.solo ? fmtTime(d.time) : `P${d.place}/${d.field}`, 400, 76, '#ffb62e', d.solo ? 64 : 92); stat(d.lapLabel.startsWith('LAP') ? 'LAP' : 'PROGRESS', d.lapLabel.replace('LAP ', ''), 400, 232, '#e8f4ff', 64); if (d.elim !== undefined) warn = `CUT IN ${Math.ceil(d.elim)}s${d.place === d.active ? ' — YOU ARE LAST' : ''}`; else if (d.storm) warn = 'STORM CELL'; if (d.integrity !== undefined) { c.fillStyle = '#4fe3ff'; c.font = F(30); c.fillText('INTEGRITY ' + '■ '.repeat(Math.max(0, d.integrity)), 28, 330); }
         // light wall: which button, and whether it is ready, laying or recharging
         if (d.wallMax) { const on = d.wallOn > 0, ready = !on && d.pulse <= 0, col = on ? (Math.floor(now / 140) % 2 ? '#ffffff' : '#4fe3ff') : ready ? '#6dffb0' : '#8fa6bd'; c.fillStyle = col; c.font = F(27, 600); c.fillText(`${d.abilityKey} · LIGHT WALL ${on ? 'ACTIVE' : ready ? 'READY' : Math.ceil(d.pulse) + 's'}${d.takedowns ? '   ✕' + d.takedowns : ''}`, 28, 324); bar(28, 362, 330, 14, on ? d.wallOn / d.wallLay : 1 - d.pulse / d.wallMax, on ? '#4fe3ff' : ready ? '#6dffb0' : '#53657a'); } }
+      // light wall state, unmissable: a strobing frame and badge while laying, a green badge when ready
+      if (this.mode === 'race' && d.wallMax) {
+        const on = d.wallOn > 0, ready = !on && d.pulse <= 0, blink = Math.floor(now / 120) % 2 === 0;
+        if (on) { c.strokeStyle = blink ? '#ffffff' : '#4fe3ff'; c.lineWidth = 16; c.strokeRect(8, 8, W - 16, H - 16); }
+        if (on || ready) { c.fillStyle = on ? (blink ? '#4fe3ff' : '#ffffff') : 'rgba(42,255,138,0.18)'; c.fillRect(640, 14, 368, 50); if (!on) { c.strokeStyle = '#2aff8a'; c.lineWidth = 3; c.strokeRect(640, 14, 368, 50); }
+          c.fillStyle = on ? '#03070c' : '#6dffb0'; c.font = F(38, 700); c.textAlign = 'center'; c.fillText(on ? '◼ LIGHT WALL ON' : `WALL READY · ${d.abilityKey}`, 824, 18); c.textAlign = 'left'; }
+      }
       // radar / route map
       c.strokeStyle = 'rgba(150,215,255,0.45)'; c.lineWidth = 2; c.strokeRect(700, 70, 296, 296); c.drawImage(this.radar, 704, 74, 288, 288);
     }

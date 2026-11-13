@@ -100,7 +100,7 @@ export class App {
     this.menu.reset(() => mainScreen(this)); if (cycles) this.menu.open(() => cycleScreen(this));
   }
   toMenu(modeSelect = false) {
-    this.session?.dispose(); this.session = null; this.menuScene = null; this.showMenuScene();
+    this.session?.dispose(); this.session = null; this.engine.derez = this.engine.derezTarget = 0; this.menuScene = null; this.showMenuScene();
     this.enterMenu(modeSelect && this.current?.tier.mode !== 'discs'); this.store.save();
   }
   replaySplash() { this.menu.close(); if (this.menuScene) this.menuScene.calm = false; this.splash = new Splash(this.ctx, this.ui, this.menuScene!, true, () => { this.splash = null; this.enterMenu(); }); this.state = 'splash'; }
@@ -120,7 +120,7 @@ export class App {
     this.loadingEl.className = 'loading thin'; this.loadingEl.style.display = ''; this.progress(0); (this.loadingEl.querySelector('.lbl') as HTMLElement).textContent = 'Compiling ' + c.tier.name;
     const s = this.store.data.settings, diff = s.difficulty;
     void this.assets.load(sessionAssets(c.tier, s), (d, n) => this.progress(d / n)).then(() => {
-      this.session?.dispose(); this.session = null; this.menuScene = null;
+      this.session?.dispose(); this.session = null; this.engine.derez = this.engine.derezTarget = 0; this.menuScene = null;
       try { this.session = createSession(this.ctx, c.tier, diff, c.salt, c.stage); } catch (e) { console.error(e); this.note('This tier failed to initialise. Returning to the command centre.'); this.loadingEl.style.display = 'none'; this.toMenu(); return; }
       this.loadingEl.style.display = 'none'; this.state = 'play'; this.playClock = 0;
       if (c.track !== 'endless') { this.store.data.last = { game: c.tier.mode === 'discs' ? 'discs' : 'cycles', track: c.track, tier: c.tier.id }; this.store.save(); }
@@ -133,6 +133,8 @@ export class App {
   // ------------------------------------------------------------ results & progression
   private finishSession() {
     const c = this.current!, ses = this.session!, r = ses.result!, st = this.store, data = st.data, diff = data.settings.difficulty, tier = c.tier;
+    // the loss derez is pinned near full at the end of the outro: dissolve it away so the results read clearly
+    this.engine.derezTo(0, 1.6);
     this.state = 'results'; this.hud.show(null); this.input.setPointerLock(false); data.totals.playSeconds += this.playClock;
     const stages = Number(tier.params.stages ?? 1); let won = r.won; const extra: [string, string][] = []; let score = r.score, next: (() => void) | null = null, nextLabel = '', nextSub = '', kicker = c.track === 'endless' ? `Endless · wave ${c.endless!.wave}` : `${TRACKS[c.track].label} · tier ${tier.id}`;
     // multi-stage championships: placement points accumulate across stages

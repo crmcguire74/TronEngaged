@@ -23,7 +23,7 @@ export class GloveHand {
       if (!own) return;
       o.geometry.computeBoundingBox(); box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); found = true;
       const m = o.material as THREE.MeshStandardMaterial;
-      if (m.name === 'GloveGlow') { m.emissive = new THREE.Color(glow); m.emissiveIntensity = 2.4; m.color.set(glow); } else { m.color.setScalar(0.09); m.roughness = 0.55; m.metalness = 0.35; }
+      if (m.name === 'GloveGlow') (o as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: new THREE.Color(glow).multiplyScalar(1.3) }); /* unlit: the finger lines read without bloom */ else { m.color.setScalar(0.03); m.roughness = 0.18; m.metalness = 0.6; m.envMapIntensity = 1.8; }
     });
     // model rest pose: fingers -Y, thumb +Z, palm toward the body. Rotate 180° about (0,1,1) so fingers → -Z, thumb → +Y.
     const pivot = new THREE.Group(); pivot.quaternion.set(0, Math.SQRT1_2, Math.SQRT1_2, 0);

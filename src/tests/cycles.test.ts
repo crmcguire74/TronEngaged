@@ -60,3 +60,17 @@ describe('racing', () => {
   }, 120000);
   it('generated tracks relax until valid', () => { for (let s = 1; s < 40; s++) expect(validateTrack(buildTrack({ seed: s, closed: true, radius: 180, wobble: 0.9, elevation: 20, width: 16, knots: 12 }))).toEqual([]); });
 });
+
+describe('new tier mechanics', () => {
+  it('riding through a charge gate recharges the light wall', () => {
+    const t = RACE_TIERS.find((x) => x.modifiers.includes('charge-gates'))!; const sim = new RaceSim(buildRaceConfig(t, 'standard', 'azure'));
+    expect(sim.gates.length).toBeGreaterThan(0); const g = sim.gates[0], P = sim.player; P.wallCd = 6; P.idx = g.idx; P.d = g.d;
+    (sim as any).zones(P, DT); expect(P.wallCd).toBe(0); expect(sim.events.some((e) => e.type === 'charge' && e.mine)).toBe(true);
+    P.wallCd = 6; P.d = g.d + g.r + 1; (sim as any).zones(P, DT); expect(P.wallCd).toBe(6);
+  });
+  it('an ion lane speeds up a rider travelling along it, not across it', () => {
+    const sim = new CombatSim(base({ rivals: [], modifiers: ['ion-lanes'] })); const P = sim.player, ln = sim.lanes[0]; (sim as any).state = 'active';
+    const speedAt = (dir: number) => { P.alive = true; P.x = ln.x; P.z = ln.z; P.dir = dir; P.speed = 24; for (let i = 0; i < 60; i++) { P.x = ln.x; P.z = ln.z; (sim as any).stepCycle(P, idle, DT); } return P.speed; };
+    expect(speedAt(0)).toBeGreaterThan(30); expect(speedAt(1)).toBeLessThan(25);
+  });
+});

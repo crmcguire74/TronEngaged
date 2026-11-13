@@ -32,6 +32,8 @@ export interface WallSeg { owner: number; x0: number; z0: number; x1: number; z1
 export const WALL_LAY = 1.8, WALL_LIFE = 4.5, WALL_COOLDOWN = 8;
 export interface Hazard { idx: number; d: number; r: number; amp: number; w: number; phase: number; x: number; y: number; z: number }
 export interface Pad { i0: number; i1: number; d: number; hw: number }
+/** Charge gate: a hoop over part of the lane. Riding through it recharges your light wall at once. */
+export interface ChargeGate { idx: number; d: number; r: number; flash: number }
 export interface SlowZone { i0: number; i1: number }
 
 const RACER_R = 0.85;
@@ -41,7 +43,7 @@ export class RaceSim {
   readonly cfg: RaceConfig; readonly rng: Rng; readonly track: Track;
   /** True in light-wall events: the ability lays a wall instead of firing a pulse. */ readonly lightwalls: boolean; walls: WallSeg[] = [];
   /** True where a rider at super speed can shove another off line; shoved into a rail or a wall, a rival is destroyed. */ readonly ramming: boolean;
-  racers: Racer[] = []; hazards: Hazard[] = []; pads: Pad[] = []; slows: SlowZone[] = []; events: SimEvent[] = [];
+  racers: Racer[] = []; hazards: Hazard[] = []; pads: Pad[] = []; gates: ChargeGate[] = []; slows: SlowZone[] = []; events: SimEvent[] = [];
   time = 0; state: 'active' | 'won' | 'lost' = 'active'; checkpoints: number[] = []; parTime: number;
   stats: RaceStats = { place: 1, field: 1, time: 0, parTime: 0, overtakes: 0, cleanSections: 0, sections: 0, scrapes: 0, driftMeters: 0, bestLap: 0, takedowns: 0 };
   /** The field shares one rhythm for laying walls, so a rider in the pack is not walled over and over. */ private rivalWallAt = 0;
@@ -71,6 +73,7 @@ export class RaceSim {
     // hazards, boost pads and storm cells, kept off the start straight
     const free = (i: number) => i > 40 && i < t.n - 30;
     for (let k = 0; k < cfg.pads; k++) { const i0 = Math.round(((k + 0.5) / cfg.pads) * t.n + this.rng.range(-10, 10)); if (free(i0)) this.pads.push({ i0, i1: i0 + 7, d: this.rng.range(-0.5, 0.5) * (t.width / 2 - 3), hw: 2.6 }); }
+    if (this.lightwalls && cfg.modifiers.includes('charge-gates')) { const ng = cfg.modifiers.includes('charge-gates-4') ? 4 : 3; for (let k = 0; k < ng; k++) { const idx = Math.round(((k + 0.3) / ng) * t.n + this.rng.range(-6, 6)); if (free(idx) && !this.pads.some((p) => Math.abs(p.i0 - idx) < 14)) this.gates.push({ idx, d: (k % 2 ? 1 : -1) * (t.width / 2 - 4.2) * this.rng.range(0.35, 0.8), r: 3.1, flash: 0 }); } }
     const hz = Math.round(cfg.hazards * cfg.hazardMul);
     for (let k = 0; k < hz; k++) {
       const idx = Math.round(((k + 0.7) / hz) * t.n + this.rng.range(-8, 8)); if (!free(idx)) continue;
@@ -90,9 +93,11 @@ export class RaceSim {
   private updateHazards() { for (const h of this.hazards) { const d = h.amp ? Math.sin(this.time * h.w + h.phase) * h.amp : h.d; h.d = d; trackPoint(this.track, h.idx, d, pt); h.x = pt.x; h.y = pt.y; h.z = pt.z; } }
 
   step(dt: number, intent: RaceIntent) {
-    if (this.state !== 'active') return;
+    // finished: freeze in place (prev = current), or the view keeps blending between the last two steps and everything shakes
+    if (this.state !== 'active') { for (const r of this.racers) { r.px = r.x; r.py = r.y; r.pz = r.z; r.ph = r.h; } return; }
     this.time += dt; this.stats.time = this.time;
     this.updateHazards(); while (this.walls.length && this.walls[0].until < this.time) this.walls.shift();
+    for (const g of this.gates) g.flash = Math.max(0, g.flash - dt);
     for (const r of this.racers) { if (r.out) continue; if (r.downT > 0) { this.reform(r, dt); continue; } if (!r.isPlayer) this.drive(r, dt); this.stepRacer(r, r.isPlayer ? intent : r.intent, dt); }
     // rider contact
     for (let i = 0; i < this.racers.length; i++) for (let j = i + 1; j < this.racers.length; j++) {
@@ -111,8 +116,8 @@ export class RaceSim {
    */
   private takedown(r: Racer, cause: 'wall' | 'rail', by: number) {
     // an elimination event is the exception: there the field is meant to shrink, so a takedown is final
-    if (this.cfg.format === 'elimination') { r.out = true; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1; this.events.push({ type: 'eliminated', id: r.id, player: false, x: r.x, y: r.y, z: r.z, left: this.racers.filter((o) => !o.out).length, wall: cause === 'wall', rail: cause === 'rail', by }); return; }
-    r.downT = 3.4; r.vx = r.vz = 0; r.speed = 0; r.wallT = 0; r.shoveT = 0; r.stun = 0; r.boosting = false; r.drifting = false; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1;
+    if (this.cfg.format === 'elimination' && !r.isPlayer) { r.out = true; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1; this.events.push({ type: 'eliminated', id: r.id, player: false, x: r.x, y: r.y, z: r.z, left: this.racers.filter((o) => !o.out).length, wall: cause === 'wall', rail: cause === 'rail', by }); return; }
+    r.downT = r.isPlayer ? 3 : 3.4; r.vx = r.vz = 0; r.speed = 0; r.wallT = 0; r.shoveT = 0; r.stun = 0; r.boosting = false; r.drifting = false; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1;
     this.events.push({ type: 'takedown', id: r.id, x: r.x, y: r.y, z: r.z, by, cause });
   }
   private reform(r: Racer, dt: number) {
@@ -205,15 +210,13 @@ export class RaceSim {
       if (w.owner === r.id || Math.abs(w.y - r.y) > 3) continue;
       const ex = w.x1 - w.x0, ez = w.z1 - w.z0, k = clamp(((r.x - w.x0) * ex + (r.z - w.z0) * ez) / (ex * ex + ez * ez || 1), 0, 1);
       if (Math.hypot(r.x - (w.x0 + ex * k), r.z - (w.z0 + ez * k)) > RACER_R + 0.15) continue;
+      // a light wall derezzes whoever rides into it, player or rival: the rider re-forms on the road a few seconds later,
+      // with the field gone past (in an elimination event a rival is out for good; the player still re-forms)
       if (r.isPlayer) {
-        // the player survives a wall: a hard stall, and it counts against a clean sector
-        r.stun = 0.8; r.vx *= 0.45; r.vz *= 0.45; r.drifting = false; r.graceT = 3.5; this.sectorClean = false; this.stats.scrapes++;
-        this.events.push({ type: 'wallHit', id: r.id, player: true, x: r.x, y: r.y, z: r.z });
+        this.sectorClean = false; this.stats.scrapes++; this.events.push({ type: 'wallHit', id: r.id, player: true, x: r.x, y: r.y, z: r.z });
         if (this.cfg.format === 'gauntlet') { r.integrity--; this.events.push({ type: 'integrity', left: r.integrity }); }
-      } else if (w.owner === this.player.id) {
-        // only the player's wall derezzes a rival; rivals just stall on each other's
-        this.takedown(r, 'wall', w.owner);
-      } else { r.stun = 0.8; r.vx *= 0.45; r.vz *= 0.45; r.drifting = false; r.graceT = 3.5; }
+      }
+      this.takedown(r, 'wall', w.owner);
       return;
     }
   }
@@ -223,6 +226,7 @@ export class RaceSim {
   private zones(r: Racer, dt: number) {
     const t = this.track; const inRange = (i0: number, i1: number) => { let k = r.idx - i0; if (t.closed && k < 0) k += t.n; return k >= 0 && k <= i1 - i0; };
     for (const p of this.pads) if (inRange(p.i0, p.i1) && Math.abs(r.d - p.d) < p.hw) { if (r.speed < r.veh.top * 1.3) { const k = 1 + 16 * dt / Math.max(8, r.speed); r.vx *= k; r.vz *= k; } r.boost = Math.min(1, r.boost + 0.5 * dt); if (r.isPlayer && r.pulseCd >= 0) this.events.push({ type: 'pad' }); }
+    if (r.wallCd > 0) for (const g of this.gates) if (inRange(g.idx, g.idx + 1) && Math.abs(r.d - g.d) < g.r - 0.6) { r.wallCd = 0; g.flash = 0.6; this.events.push({ type: 'charge', id: r.id, mine: r.isPlayer, idx: g.idx, d: g.d }); }
     let slow = false; for (const s of this.slows) if (inRange(s.i0, s.i1)) slow = true;
     if (slow !== r.slow) { r.slow = slow; if (r.isPlayer) this.events.push({ type: 'storm', on: slow }); }
     for (const h of this.hazards) {

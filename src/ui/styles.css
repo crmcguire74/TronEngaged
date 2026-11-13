@@ -60,6 +60,8 @@ kbd { font-family: var(--mono); font-size: 0.82em; border: 1px solid var(--line-
 .speedo b { font-size: 56px; font-weight: 600; line-height: 0.9; letter-spacing: 0.04em; text-shadow: 0 0 22px rgba(79, 227, 255, 0.5); min-width: 3ch; text-align: right; }
 .speedo .bar { grid-column: 1 / -1; width: 100%; height: 9px; margin-top: 6px; } .speedo .bar i { background: repeating-linear-gradient(90deg, var(--ion) 0 7px, transparent 7px 10px); } .speedo label { grid-column: 1 / -1; }
 .hud[data-mode='combat'] .speedo, .hud[data-mode='race'] .speedo { display: grid; }
+/* cockpit view: the dash display carries speed and boost, so the screen-space cluster steps aside */
+.hud.cockpit .speedo { display: none; }
 .hud[data-mode='combat'] .discs, .hud[data-mode='race'] .discs, .hud[data-mode='combat'] .meter, .hud[data-mode='race'] .meter, .hud[data-mode='combat'] .reticle, .hud[data-mode='race'] .reticle, .hud[data-mode='discs'] .radar { display: none; }
 .hud-br { right: var(--pad); bottom: calc(var(--pad) + var(--safe-b)); }
 .radar { width: clamp(150px, 17vw, 250px); aspect-ratio: 1; }

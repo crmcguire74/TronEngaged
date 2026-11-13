@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-12T14:54:12.323Z",
+  "generated": "2026-11-13T00:34:38.669Z",
   "note": "Source files in assets/ are never moved or renamed; runtime copies live in public/game-assets/.",
   "assets": [
     {
@@ -483,6 +483,64 @@
       "generator": "https://tripo3d.ai"
     },
     {
+      "name": "drone",
+      "source": "assets/generated/drone.glb",
+      "runtime": "game-assets/vehicles/air/drone.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 145072,
+      "intendedUsage": "Broadcast camera drone that films the action, original design (scripts/blender/build_fleet.py)",
+      "status": "ready",
+      "triangles": 5060,
+      "meshes": 6,
+      "materials": [
+        "Shell",
+        "Panel",
+        "CamGlass",
+        "Trim",
+        "Alloy",
+        "NavRed"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "carrier",
+      "source": "assets/generated/carrier.glb",
+      "runtime": "game-assets/vehicles/air/carrier.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 155952,
+      "intendedUsage": "Heavy carrier crossing the sky above arenas and circuits, original design (scripts/blender/build_fleet.py)",
+      "status": "ready",
+      "triangles": 5184,
+      "meshes": 8,
+      "materials": [
+        "Shell",
+        "Panel",
+        "Window",
+        "Trim",
+        "NavRed",
+        "Lens",
+        "NavGreen",
+        "Alloy"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
       "name": "patrol-craft",
       "source": "assets/generated/patrol-craft.glb",
       "runtime": "game-assets/vehicles/air/patrol-craft.glb",
@@ -501,6 +559,68 @@
         "Trim",
         "NavRed",
         "NavGreen"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "cockpit-v3",
+      "source": "assets/generated/cockpit-v3.glb",
+      "runtime": "game-assets/vehicles/player/cockpit-v3.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 892228,
+      "intendedUsage": "First-person / VR cockpit v3: clear-coat black, chrome, neon bands, octagonal glass display, live gauges, ribbed grips (scripts/blender/build_cockpit_v3.py)",
+      "triangles": 33010,
+      "meshes": 11,
+      "materials": [
+        "Body",
+        "Trim",
+        "Chrome",
+        "Screen",
+        "DisplayGlass",
+        "WallLamp",
+        "Lens",
+        "Rubber",
+        "Glass",
+        "Needle"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "cockpit-v2",
+      "source": "assets/generated/cockpit-v2.glb",
+      "runtime": "game-assets/vehicles/player/cockpit-v2.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 460896,
+      "intendedUsage": "First-person / VR cockpit with steerable yoke, light-wall lamps and hinged canopy (scripts/blender/build_cockpit_v2.py)",
+      "status": "ready",
+      "triangles": 16622,
+      "meshes": 9,
+      "materials": [
+        "Body",
+        "Trim",
+        "Alloy",
+        "Satin",
+        "Screen",
+        "WallLamp",
+        "Rubber",
+        "Lens",
+        "Glass"
       ],
       "textures": 0,
       "rigged": false,

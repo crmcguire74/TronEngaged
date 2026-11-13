@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { BaseSession, ctl, type Ctx, type SessionResult } from '../../app/context';
 import type { Actions } from '../../input/input';
 import type { SimEvent } from '../../engine/events';
-import { Patrol } from '../../engine/patrol';
-import { Crowd, boundaryWall, edgeBlock, gridFloor, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
+import { Carrier, Drones, Patrol } from '../../engine/patrol';
+import { TONE, Crowd, boundaryWall, edgeBlock, gridFloor, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { CITY_PANO } from '../../engine/assets';
 import { angleLerp, clamp, damp, lerp, smooth } from '../../engine/math';
 import { buildCombatConfig } from '../../progression/build';
@@ -14,16 +14,17 @@ import { RIVAL_MODELS, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, 
 
 const yawOf = (dir: number) => Math.atan2(DIRS[dir][0], DIRS[dir][1]);
 const TAUNTS = ['Too slow.', 'Flatlined.', 'Loser.', 'Boxed in.', 'Recompile and return.'];
+const ION_LANE = 0xffc23a;
 const POWER_COLOR: Record<string, number> = { phase: 0xb57bff, purge: 0xffffff, shock: 0xffe14a, boost: 0x4fe3ff };
 
 /** Cycle Combat: classic 90° hardlight-wall duels. Presentation over the shared CombatSim. */
 export class CombatSession extends BaseSession {
   readonly mode = 'cycle-combat' as const; sim: CombatSim; private th: Theme; private intent: CycleIntent = { turn: 0, accel: 0, boost: false, ability: false };
   private cv: CycleView[] = []; private trails: WallTrail[] = []; private colors: number[] = []; private walls: THREE.Mesh[] = []; private obs: (THREE.Object3D | null)[] = []; private pick = new Map<number, THREE.Object3D>();
-  private timed: THREE.ShaderMaterial[] = []; private floor: THREE.Mesh; private crowd: Crowd | null = null; private patrol: Patrol; private lines: SpeedLines;
+  private timed: THREE.ShaderMaterial[] = []; private floor: THREE.Mesh; private crowd: Crowd | null = null; private patrol: Patrol; private drones: Drones; private carrier: Carrier; private look = new THREE.Vector3(); private yokeYaw = 0; private ionSeen = false; private yokeKick = 0; private lines: SpeedLines;
   private camYaw = Math.PI; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private shrinking = false; private deadT = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private surgeT = 0; private boostPrev = false; private seatDirty = false; private turned = false; private proxT = 0; private early: boolean;
 
-  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...RIVAL_MODELS], 'azure'), 'stand', 'pylon', 'craft']; }
+  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...RIVAL_MODELS], 'azure'), 'stand', 'pylon', 'craft', 'drone', 'carrier']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0) {
     super(ctx, tier, diff);
@@ -41,6 +42,8 @@ export class CombatSession extends BaseSession {
     this.buildStadium(H);
     // patrol skimmers circle above the stadium, sweeping the grid with searchlights
     this.patrol = new Patrol(ctx.assets, { cx: 0, cz: 0, radius: H * 1.1 + 20, height: 48, floorY: 0, count: ctx.settings.quality === 'low' ? 2 : 3, color: th.accent }); W.add(this.patrol.group);
+    this.drones = new Drones(ctx.assets, 2, th.accent); W.add(this.drones.group);
+    this.carrier = new Carrier(ctx.assets, th.accent, { cx: 0, cz: 0, offset: H + 260, alt: 150, heading: 2.3, len: 1800 }); W.add(this.carrier.group);
     if (tier.environment === 'championship') { this.crowd = new Crowd(H * 1.5 + 14, 4, 8, 260, th, 4); W.add(this.crowd.mesh); }
     // riders
     sim.cycles.forEach((c) => {
@@ -50,6 +53,14 @@ export class CombatSession extends BaseSession {
 
     });
     sim.obstacles.forEach((_, i) => this.addObstacle(i));
+    // ion lanes: gold strips with light pulsing outward from the middle (either direction is fast), lit edge rails and end posts
+    for (const ln of sim.lanes) {
+      const L = ln.len * 2, Wd = ln.hw * 2, m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(ION_LANE) }, uLen: { value: L } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+        fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uLen; varying vec2 vUv; void main(){ float along = abs(vUv.x - 0.5) * uLen; float c = fract(along / 5.0 - abs(vUv.y - 0.5) * 0.6 - uTime * 1.4); float bar = smoothstep(0.6, 0.85, c) * (1.0 - smoothstep(0.85, 1.0, c)); float edge = smoothstep(0.42, 0.5, abs(vUv.y - 0.5)); float fade = 1.0 - smoothstep(0.9, 1.0, abs(vUv.x - 0.5) * 2.0); gl_FragColor = vec4(uColor * 2.0, (bar * 0.8 + edge * 0.95 + 0.12) * fade); ${TONE} }` });
+      this.timed.push(m); const strip = new THREE.Mesh(new THREE.PlaneGeometry(L, Wd), m); strip.rotation.x = -Math.PI / 2; if (ln.axis === 1) strip.rotation.z = Math.PI / 2; strip.position.set(ln.x, 0.04, ln.z); strip.renderOrder = 1; W.add(strip);
+      for (const e of [-1, 1]) for (const s2 of [-1, 1]) { const post = edgeBlock(0.35, 1.4, 0.35, ION_LANE); const a = e * ln.len, b = s2 * (ln.hw + 0.5); post.position.set(ln.x + (ln.axis === 0 ? a : b), 0.7, ln.z + (ln.axis === 0 ? b : a)); W.add(post); }
+    }
     this.lines = new SpeedLines(th.accent); W.add(this.lines.mesh);
     W.add(ctx.vfx.group); ctx.vfx.clear(); eng.setWorld(W);
     ctx.hud.show('combat'); ctx.audio.playMusic('cycles'); ctx.audio.ambience(tier.environment); ctx.audio.intensity = 0.3; ctx.audio.setCrowdBed(this.crowd ? 0.02 : 0);
@@ -121,6 +132,7 @@ export class CombatSession extends BaseSession {
       case 'nearMiss': audio.sfx('nearMiss'); hud.toast('CLOSE CALL  +60', 'good'); break;
       case 'boost': if (e.on) audio.sfx('boost', mine ? undefined : pos); break;
       case 'grind': break;
+      case 'ion': if (e.on) { audio.sfx('pad'); xr.pulse('both', 0.3, 50); if (!this.ionSeen) { this.ionSeen = true; hud.toast('ION LANE — RIDE ALONG IT FOR SPEED + BOOST', 'good'); } } break;
       case 'pickupSpawn': { const g = new THREE.Group(), cc = POWER_COLOR[e.kind]; const geo = e.kind === 'phase' ? new THREE.OctahedronGeometry(1.1) : e.kind === 'purge' ? new THREE.TorusGeometry(0.9, 0.22, 8, 24) : e.kind === 'shock' ? new THREE.TetrahedronGeometry(1.2) : new THREE.ConeGeometry(0.8, 1.8, 4); const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(cc).multiplyScalar(1.6), wireframe: e.kind === 'phase' })); m.position.y = 1.6; const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 14, 6, 1, true), new THREE.MeshBasicMaterial({ color: cc, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 7; g.add(m, beam); g.position.set(e.x, 0, e.z); this.world.add(g); this.pick.set(e.pid, g); break; }
       case 'pickup': { const g = this.pick.get(e.pid); if (g) { this.world.remove(g); this.pick.delete(e.pid); } audio.sfx('pickup', mine ? undefined : e); vfx.ring(e.x, 0.3, e.z, POWER_COLOR[e.kind], 0.4, 4, 0.4); if (mine) hud.toast(e.kind === 'boost' ? 'BOOST REFILLED' : `${String(e.kind).toUpperCase()} READY — PRESS ABILITY`, 'good'); break; }
       case 'power': audio.sfx('power', mine ? undefined : e); vfx.ring(e.x, 0.4, e.z, POWER_COLOR[e.kind], 0.5, e.kind === 'shock' ? 45 : 6, 0.7); if (e.kind === 'shock' && !mine && this.sim.player.shockT > 0) hud.toast('SHOCKED — SPEED CUT', 'danger'); break;
@@ -163,6 +175,7 @@ export class CombatSession extends BaseSession {
     sim.obstacles.forEach((o, i) => { const g = this.obs[i]; if (!g) return; if (o.kind === 'pit') { g.visible = o.state !== 'off' && (o.state === 'solid' || Math.sin(t * 16) > -0.2); } else { const k = o.state === 'solid' ? 1 : o.state === 'warn' ? 0.04 + 0.03 * Math.sin(t * 18) : 0; g.scale.y = damp(g.scale.y, Math.max(0.001, k), 8, dt); g.position.y = 3 * g.scale.y; g.visible = g.scale.y > 0.004; } });
     for (const g of this.pick.values()) { g.children[0].rotation.y = t * 2.4; g.children[0].position.y = 1.6 + Math.sin(t * 3) * 0.25; }
     // camera
+    this.drones.orbit(dt, 0, 13, 0, sim.half0 * 0.7, this.look.set(lerp(P.px, P.x, alpha), 0.8, lerp(P.pz, P.z, alpha))); this.carrier.update(dt);
     const px = lerp(P.px, P.x, alpha), pz = lerp(P.pz, P.z, alpha), yaw = yawOf(P.dir), sp01 = P.speed / (sim.cfg.speed * 1.55);
     const dev = a.device; hud.menuHint = ctl(dev, 'ESC — MENU   ·   C — VIEW', 'START — MENU   ·   RB — VIEW', `HOLD ${xr.labels.menu} — MENU   ·   ${xr.labels.view} — VIEW   ·   ${xr.labels.turn} ↕ — SEAT`);
     if (!this.xr) hud.vrSeat = null;
@@ -170,7 +183,10 @@ export class CombatSession extends BaseSession {
     this.start?.tick(dt); const seated = !this.start || this.start.seated;
     if (a.camera && this.xr && seated && this.phase !== 'intro') { this.vrFirst = !this.vrFirst; this.ctx.settings.vr.cycleView = this.vrFirst ? 'cockpit' : 'chase'; hud.toast(this.vrFirst ? 'COCKPIT VIEW' : 'CHASE VIEW', 'info'); }
     const first = this.xr ? this.vrFirst && seated : this.cockpit && this.phase !== 'intro' && P.alive;
-    this.cv[0].firstPerson(first); this.cv[0].setPower(this.phase === 'intro' ? smooth(clamp(this.t / this.introDur * 1.4 - 0.2, 0, 1)) : 1); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
+    this.cv[0].firstPerson(first); this.cv[0].setPower(this.phase === 'intro' ? smooth(clamp(this.t / this.introDur * 1.4 - 0.2, 0, 1)) : 1);
+    // cockpit: a 90° turn flicks the yoke over and back; the lamps glow steadily because the trail is always laying
+    const dy = Math.atan2(Math.sin(yaw - this.yokeYaw), Math.cos(yaw - this.yokeYaw)); this.yokeYaw = yaw; this.yokeKick = clamp(this.yokeKick * Math.exp(-7 * dt) - dy * 0.9, -1, 1);
+    this.cv[0].drive(this.yokeKick, this.phase === 'play' ? clamp(this.intent.accel + 0.5, 0, 1) : 0, this.phase === 'play' ? clamp(-this.intent.accel, 0, 1) : 0, sp01, P.boosting, dt); this.cv[0].setWall('charging', 1); if (this.phase === 'outro') this.cv[0].unseal(); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
     if (this.xr && !seated) { if (!this.recentred) { this.recentred = true; this.offset.copy(cam.position); this.vrYaw = yaw; } this.start.placeBeside(px, 0, pz, yaw, this.offset); hud.vrSeat = null; xr.showHands = true; xr.update(dt, false); engine.vignetteAmount = 0; }
     else if (this.xr) {
       // head-tracked and never rolled; classic turns are snap turns. Chase view sits above and behind for readability.

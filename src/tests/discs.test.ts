@@ -105,3 +105,19 @@ describe('disc AI and arenas', () => {
     expect(a.fighters.map((f) => [f.x, f.z, f.hp])).toEqual(b.fighters.map((f) => [f.x, f.z, f.hp])); expect(a.discs.map((d) => [d.x, d.y, d.z])).toEqual(b.discs.map((d) => [d.x, d.y, d.z]));
   });
 });
+
+describe('amplifier rings', () => {
+  it('a disc thrown through a ring speeds up once and hits harder', () => {
+    const sim = duel({ modifiers: ['amp'] }); passive(sim); const a = sim.amps[0]; expect(sim.amps.length).toBe(2);
+    const d = sim.discs[0]; d.state = 'flying'; d.team = 0; d.x = d.px = a.x; d.y = d.py = a.y; d.z = d.pz = a.z + 2; d.vx = 0; d.vy = 0; d.vz = -20;
+    sim.events.length = 0; for (let i = 0; i < 30; i++) (sim as any).stepDiscs(DT);
+    expect(sim.events.some((e) => e.type === 'amp')).toBe(true); expect(d.amped).toBe(true); expect(Math.abs(d.vz)).toBeCloseTo(26, 0);
+    // only once per flight
+    const n = sim.events.filter((e) => e.type === 'amp').length; d.z = d.pz = a.z + 2; d.vz = -20; for (let i = 0; i < 30; i++) (sim as any).stepDiscs(DT); expect(sim.events.filter((e) => e.type === 'amp').length).toBe(n);
+  });
+  it('a disc that misses the hoop is not amplified', () => {
+    const sim = duel({ modifiers: ['amp'] }); passive(sim); const a = sim.amps[0];
+    const d = sim.discs[0]; d.state = 'flying'; d.team = 0; d.x = d.px = a.x + a.r + 0.5; d.y = d.py = a.y; d.z = d.pz = a.z + 2; d.vx = 0; d.vy = 0; d.vz = -20;
+    for (let i = 0; i < 30; i++) (sim as any).stepDiscs(DT); expect(d.amped).toBeFalsy();
+  });
+});

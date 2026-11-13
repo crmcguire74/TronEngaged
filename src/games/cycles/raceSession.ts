@@ -5,7 +5,7 @@ import type { SimEvent } from '../../engine/events';
 import { CITY_PANO } from '../../engine/assets';
 import { TONE, edgeBlock, gridFloor, hardlight, lights, skyDome, suppliedSky, skyline, theme, type Theme } from '../../engine/env';
 import { Ribbon } from '../../engine/vfx';
-import { Patrol } from '../../engine/patrol';
+import { Carrier, Drones, Patrol } from '../../engine/patrol';
 import { angleLerp, clamp, damp, lerp, smooth, wrapAngle } from '../../engine/math';
 import { buildRaceConfig } from '../../progression/build';
 import { raceFinalScore } from '../../progression/scoring';
@@ -14,6 +14,7 @@ import { RaceSim, WALL_COOLDOWN, WALL_LAY, type RaceIntent } from './race';
 import { wrapIdx, type Track } from './track';
 import { RIVAL_MODELS, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, css, cycleAssets, playerTrail } from './view';
 
+const GATE = 0xffc23a;
 const FORMAT_LABEL: Record<string, string> = { circuit: 'CIRCUIT', sprint: 'SPRINT', elimination: 'ELIMINATION', timetrial: 'TIME TRIAL', pursuit: 'PURSUIT', gauntlet: 'GAUNTLET' };
 
 function ribbonGeo(t: Track, d0: number, d1: number, y0: number, y1: number, i0 = 0, i1 = t.n) {
@@ -34,9 +35,9 @@ function warnSign(): THREE.CanvasTexture {
 export class RaceSession extends BaseSession {
   readonly mode = 'cycle-race' as const; sim: RaceSim; private th: Theme; private intent: RaceIntent = { steer: 0, accel: 0, brake: 0, boost: false, ability: false };
   private cv: CycleView[] = []; private tails: Ribbon[] = []; private colors: number[] = []; private hz: THREE.Object3D[] = []; private timed: THREE.ShaderMaterial[] = []; private lines: SpeedLines; private fog: THREE.FogExp2;
-  private patrol!: Patrol; private camYaw = 0; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private radarPts: number[] = []; private ext = { cx: 0, cz: 0, r: 1 }; private storm = false; private padT = 0; private format: string; private yawPrev = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private wallMesh: THREE.InstancedMesh | null = null; private m4 = new THREE.Matrix4(); private q4 = new THREE.Quaternion(); private s4 = new THREE.Vector3(); private col4 = new THREE.Color(); private walled = false; private surgeT = 0; private boostPrev = false; private seatDirty = false; private early: boolean; private moved = false; private kills = 0; private seen = { hazard: 0, pad: 0, slow: 0 }; private noteT = 0; private note = '';
+  private patrol!: Patrol; private drones!: Drones; private carrier!: Carrier; private look = new THREE.Vector3(); private downCam = 0; private camYaw = 0; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private radarPts: number[] = []; private ext = { cx: 0, cz: 0, r: 1 }; private storm = false; private padT = 0; private format: string; private yawPrev = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private wallMesh: THREE.InstancedMesh | null = null; private m4 = new THREE.Matrix4(); private q4 = new THREE.Quaternion(); private s4 = new THREE.Vector3(); private col4 = new THREE.Color(); private walled = false; private surgeT = 0; private boostPrev = false; private seatDirty = false; private early: boolean; private moved = false; private kills = 0; private seen = { hazard: 0, pad: 0, slow: 0, gate: 0 }; private gv: { g: THREE.Group; spin: THREE.Group; fill: THREE.MeshBasicMaterial }[] = []; private noteT = 0; private note = '';
 
-  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...RIVAL_MODELS, 'azure'], 'azure'), ...(['metropolis', 'neon-circuit'].includes(tier.environment) ? ['city'] : []), 'craft']; }
+  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...RIVAL_MODELS, 'azure'], 'azure'), ...(['metropolis', 'neon-circuit'].includes(tier.environment) ? ['city'] : []), 'craft', 'drone', 'carrier']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0, stage = 0) {
     super(ctx, tier, diff);
@@ -48,6 +49,9 @@ export class RaceSession extends BaseSession {
     const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2, R = Math.max(maxX - minX, maxZ - minZ) / 2; this.ext = { cx, cz, r: R + 10 }; const groundY = minY - 26;
     // patrol skimmers circle the circuit, sweeping it with searchlights
     this.patrol = new Patrol(ctx.assets, { cx, cz, radius: R * 0.75, height: minY + 72, floorY: minY, count: ctx.settings.quality === 'low' ? 2 : 3, color: th.accent }); W.add(this.patrol.group);
+    // a camera drone paces the player, and a heavy carrier crosses the sky beyond the circuit
+    this.drones = new Drones(ctx.assets, ctx.settings.quality === 'low' ? 1 : 2, th.accent); W.add(this.drones.group);
+    this.carrier = new Carrier(ctx.assets, th.accent, { cx, cz, offset: R + 160, alt: minY + 140, heading: 0.7, len: R * 2 + 1500 }); W.add(this.carrier.group);
     const ground = gridFloor(6000, th, 10, { fade: 1400, glow: 0.5 }); ground.position.set(cx, groundY, cz); W.add(ground); this.timed.push(ground.material as THREE.ShaderMaterial);
     // road ribbon: real geometry matching the simulated width exactly
     const road = new THREE.ShaderMaterial({ side: THREE.DoubleSide, uniforms: { uLine: { value: new THREE.Color(th.accent) }, uAcc: { value: new THREE.Color(th.accent2) }, uTime: { value: 0 }, uW: { value: t.width } },
@@ -79,6 +83,19 @@ export class RaceSession extends BaseSession {
     const gate = (i: number, col: number, big: boolean) => { const g = new THREE.Group(), hgt = big ? 8 : 6; for (const s of [-1, 1]) { const p = edgeBlock(0.7, hgt, 0.7, col); p.position.set(s * (hw + 1), hgt / 2, 0); g.add(p); } const top = edgeBlock(t.width + 2.7, big ? 1.6 : 0.6, 0.7, col); top.position.y = hgt; g.add(top); g.position.set(t.x[i], t.y[i], t.z[i]); g.rotation.y = Math.atan2(t.tx[i], t.tz[i]); W.add(g); };
     gate(0, th.accent2, true); for (const c of sim.checkpoints) if (c !== 0) gate(c, th.accent, false); if (!t.closed) gate(t.n - 4, th.accent2, true);
     for (const p of sim.pads) { const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x6dffb0) } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }', fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec2 vUv; void main(){ float c = fract((vUv.y - abs(vUv.x - 0.5) * 6.0) / 4.0 - uTime * 2.5); float a = smoothstep(0.55, 0.9, c); gl_FragColor = vec4(uColor * 2.0, a * 0.85); ${TONE} }` }); this.timed.push(m); const mesh = new THREE.Mesh(ribbonGeo(t, p.d - p.hw, p.d + p.hw, 0.04, 0.04, p.i0, p.i1 + 1), m); W.add(mesh); }
+    // charge gates: a gold hoop standing on the road with spinning chevrons; ride through the middle to recharge the light wall
+    for (const gt of sim.gates) {
+      const g = new THREE.Group(), spin = new THREE.Group(), gold = new THREE.MeshBasicMaterial({ color: GATE }), dim = new THREE.MeshBasicMaterial({ color: new THREE.Color(GATE).multiplyScalar(0.4) }), r = gt.r;
+      g.add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.16, 10, 64), gold), new THREE.Mesh(new THREE.TorusGeometry(r + 0.42, 0.05, 6, 64), dim));
+      const fill = new THREE.MeshBasicMaterial({ color: GATE, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }); g.add(new THREE.Mesh(new THREE.CircleGeometry(r - 0.1, 48), fill));
+      const chev = new THREE.Shape(); chev.moveTo(0, 0); chev.lineTo(-0.42, 0.5); chev.lineTo(-0.22, 0.5); chev.lineTo(0, 0.24); chev.lineTo(0.22, 0.5); chev.lineTo(0.42, 0.5); chev.closePath();
+      const cg = new THREE.ShapeGeometry(chev); cg.translate(0, r - 0.85, 0); const cm = new THREE.MeshBasicMaterial({ color: GATE, side: THREE.DoubleSide });
+      for (let k = 0; k < 8; k++) { const m = new THREE.Mesh(cg, cm); m.rotation.z = (k / 8) * Math.PI * 2; spin.add(m); } g.add(spin);
+      // two feet on the road so it stands, not floats
+      for (const sx of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.2, 0.5), new THREE.MeshStandardMaterial({ color: 0x0a0d12, metalness: 0.9, roughness: 0.3 })); leg.position.set(sx * r * 0.62, -r * 0.82, 0); g.add(leg); }
+      const i = wrapIdx(t, gt.idx); g.position.set(t.x[i] - t.tz[i] * gt.d, t.y[i] + r + 0.35, t.z[i] + t.tx[i] * gt.d); g.rotation.y = Math.atan2(t.tx[i], t.tz[i]);
+      W.add(g); this.gv.push({ g, spin, fill });
+    }
     const signTex = warnSign(); for (const h of sim.hazards) { const g = new THREE.Group(); const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.15), new THREE.MeshBasicMaterial({ color: 0xff2a14 })); core.position.y = 1.3; const shell = new THREE.Mesh(new THREE.OctahedronGeometry(1.5), new THREE.MeshBasicMaterial({ color: 0xff7a3c, wireframe: true })); shell.position.y = 1.3; const pad = new THREE.Mesh(new THREE.RingGeometry(1.5, 2.1, 6), new THREE.MeshBasicMaterial({ color: 0xff2a14, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false })); pad.rotation.x = -Math.PI / 2; pad.position.y = 0.06; const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTex, transparent: true, depthWrite: false })); sign.scale.set(2.6, 2.6, 1); sign.position.y = 4.6; const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 9, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xff2a14, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = 4.5; g.add(core, shell, beam, pad, sign); W.add(g); this.hz.push(g); }
     for (const s of sim.slows) { const mid = wrapIdx(t, Math.round((s.i0 + s.i1) / 2)), len = (s.i1 - s.i0) * t.step; const box = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), new THREE.MeshBasicMaterial({ color: 0x8a5cff, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); box.scale.set(len * 0.55, 12, len * 0.55); box.position.set(t.x[mid], t.y[mid] + 3, t.z[mid]); W.add(box); }
     if (ctx.assets.has('city') && ['metropolis', 'neon-circuit'].includes(tier.environment) && t.closed) { const c = ctx.assets.instance('city').root; let rmin = 1e9; for (let i = 0; i < t.n; i++) rmin = Math.min(rmin, Math.hypot(t.x[i] - cx, t.z[i] - cz)); const box = new THREE.Box3().setFromObject(c), half = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2 || 50, k = Math.max(0, rmin - hw - 16) / half; c.visible = k * half > 40; c.scale.setScalar(k); c.position.set(cx - ((box.min.x + box.max.x) / 2) * k, groundY + 8.4 * k, cz - ((box.min.z + box.max.z) / 2) * k); c.traverse((o: any) => { if (o.isMesh) o.castShadow = false; }); W.add(c); }
@@ -128,6 +145,7 @@ export class RaceSession extends BaseSession {
       case 'boost': if (e.on) audio.sfx('boost', mine ? undefined : this.pos(e.id)); break;
       case 'drift': if (e.on) audio.sfx('drift'); break;
       case 'driftBoost': hud.toast('DRIFT BOOST', 'good'); audio.sfx('pad'); break;
+      case 'charge': if (e.mine) { audio.sfx('pad'); audio.sfx('ready'); hud.toast('LIGHT WALL RECHARGED', 'good'); hud.flash('good'); xr.pulse('both', 0.5, 70); } break;
       case 'pad': if (this.padT <= 0) { this.padT = 0.6; audio.sfx('pad'); hud.toast('BOOST PAD', 'good'); } break;
       case 'storm': this.storm = e.on; if (e.on) { audio.sfx('interfere'); hud.toast('STORM CELL — SPEED CUT', 'warn'); } break;
       case 'checkpoint': audio.sfx('checkpoint'); hud.toast(`CHECKPOINT ${e.index}  ${fmtTime(e.time)}`, 'info'); break;
@@ -137,16 +155,18 @@ export class RaceSession extends BaseSession {
       case 'eliminated': vfx.shatter(e.x, e.y, e.z, col, 100, 1.3); audio.sfx('shatter', mine ? undefined : e); this.cv[e.id - 1].root.visible = false; if (!mine && e.rail) { hud.toast('RIVAL OFF THE ROAD', 'score'); audio.cheer(0.9); } else if (!mine && e.wall) { hud.toast(e.by === this.sim.player.id ? 'RIVAL DESTROYED ON YOUR WALL' : 'RIVAL DESTROYED', e.by === this.sim.player.id ? 'score' : 'warn'); if (e.by === this.sim.player.id) audio.cheer(1); } else if (!mine) { hud.toast(`RIDER CUT — ${e.left} LEFT`, 'warn'); if (e.left === 2) audio.say('Final runner remaining.'); } break;
       case 'takedown': {
         // a rival derezzes on your wall (or off the road): big, unmissable, and counted
-        const v = this.cv[e.id - 1], mineKill = e.by === this.sim.player.id; v.root.visible = false; this.tails[e.id - 1].mesh.visible = false;
-        vfx.derez(e.x, e.y, e.z, col, { height: 1.5, count: 260, power: 9, floorR: this.sim.track.width / 2, big: mineKill }); audio.sfx('shatter', e); audio.sfx('explosion', e);
+        const v = this.cv[e.id - 1], mineKill = e.by === this.sim.player.id && !mine; v.root.visible = false; this.tails[e.id - 1].mesh.visible = false;
+        vfx.derez(e.x, e.y, e.z, col, { height: 1.5, count: mine ? 420 : 260, power: mine ? 11 : 9, floorR: this.sim.track.width / 2, big: mineKill || mine });
+        if (mine) { this.downCam = 0; hud.banner('DEREZZED', 'You rode into a light wall — re-forming', 1500); audio.say('Derezzed.'); engine.addShake(1); engine.derez = 0.45; xr.pulse('both', 1, 400); input.rumble(1, 1, 450); }
+        else if (e.cause === 'wall' && e.by !== this.sim.player.id && this.sim.racers[e.id - 1].progress > this.sim.player.progress - 3) hud.toast('RIVAL DEREZZED', 'info'); audio.sfx('shatter', e); audio.sfx('explosion', e);
         if (mineKill) { this.kills++; hud.banner('TAKEDOWN', e.cause === 'wall' ? 'A rival derezzed on your light wall' : 'A rival was thrown off the road', 1700); hud.toast('TAKEDOWN  +220', 'score'); audio.say('Trap confirmed.'); audio.cheer(1.2); xr.pulse('both', 0.9, 160); input.rumble(0.8, 0.8, 200); engine.addShake(0.4); }
         break;
       }
-      case 'reform': { const v = this.cv[e.id - 1]; v.root.visible = true; this.tails[e.id - 1].mesh.visible = true; this.tails[e.id - 1].reset(e.x, e.y + 0.5, e.z); vfx.motes(e.x, e.y, e.z, col, 1.4, 1.6, 40); vfx.ring(e.x, e.y + 0.1, e.z, col, 0.4, 5, 0.5); audio.sfx('spawn', e); break; }
+      case 'reform': { if (mine) { hud.toast('RE-FORMED — GO', 'good'); audio.sfx('go'); } const v = this.cv[e.id - 1]; v.root.visible = true; this.tails[e.id - 1].mesh.visible = true; this.tails[e.id - 1].reset(e.x, e.y + 0.5, e.z); vfx.motes(e.x, e.y, e.z, col, 1.4, 1.6, 40); vfx.ring(e.x, e.y + 0.1, e.z, col, 0.4, 5, 0.5); audio.sfx('spawn', e); break; }
       case 'caught': vfx.shatter(e.x, e.y, e.z, col, 120, 1.3); audio.sfx('shatter'); this.cv[e.id - 1].root.visible = false; break;
       case 'shunt': vfx.sparks(e.x, e.y + 0.6, e.z, 0xffffff, 34, 11, 0.5); audio.sfx('block', e.player ? undefined : e); if (e.by === this.sim.player.id) { hud.toast('SHUNT', 'good'); xr.pulse('both', 0.8, 120); } else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.addShake(0.6); xr.pulse('both', 1, 200); } break;
       case 'wall': audio.sfx('boost', mine ? undefined : this.pos(e.id)); if (mine) { this.walled = true; hud.toast('LIGHT WALL ON', 'good'); xr.pulse('both', 0.5, 80); } else { const r = this.sim.racers[e.id - 1], P = this.sim.player; if (r.progress > P.progress && (r.progress - P.progress) * this.sim.track.step < 60) hud.toast('LIGHT WALL AHEAD — STEER ROUND IT', 'warn'); } break;
-      case 'wallHit': vfx.shatter(e.x, e.y + 0.5, e.z, 0xffffff, 50, 1.2); audio.sfx('crash'); hud.flash('hurt'); engine.addShake(0.9); xr.pulse('both', 1, 260); input.rumble(1, 1, 300); hud.toast('HIT A LIGHT WALL', 'danger'); break;
+      case 'wallHit': audio.sfx('crash'); hud.flash('hurt'); hud.toast('DEREZZED ON A LIGHT WALL', 'danger'); break;
       case 'pulse': vfx.ring(e.x, e.y + 0.4, e.z, col, 0.5, 13, 0.5); audio.sfx('power', mine ? undefined : e); if (!mine && this.sim.player.stun > 0) hud.toast('PULSED', 'danger'); break;
       case 'integrity': hud.toast(`INTEGRITY ${e.left}`, 'danger'); break;
     }
@@ -155,7 +175,7 @@ export class RaceSession extends BaseSession {
 
   protected view(dt: number, alpha: number, a: Actions) {
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, T = sim.track, t = engine.elapsed, cam = engine.camera;
-    for (const m of this.timed) m.uniforms.uTime.value = t; this.patrol.update(dt); vfx.update(dt); this.padT -= dt;
+    for (const m of this.timed) m.uniforms.uTime.value = t; this.patrol.update(dt); vfx.update(dt); this.padT -= dt; this.sim.gates.forEach((gt, k) => { const v = this.gv[k]; if (!v) return; v.spin.rotation.z = t * 1.4 + k; const f = gt.flash / 0.6; v.fill.opacity = 0.06 + 0.03 * Math.sin(t * 4 + k) + 0.45 * f; v.g.scale.setScalar(1 + 0.15 * f); });
     if (a.camera && !this.xr && this.phase !== 'intro') { this.cockpit = !this.cockpit; this.ctx.settings.cycleCamera = this.cockpit ? 'cockpit' : 'chase'; }
     this.fog.density = damp(this.fog.density, this.th.fogDensity * (this.storm ? 7 : 1), 3, dt);
     const hums: { x: number; y: number; z: number; pitch: number; gain: number }[] = [];
@@ -172,13 +192,17 @@ export class RaceSession extends BaseSession {
     hums.sort((p, q) => Math.hypot(p.x - P.x, p.z - P.z) - Math.hypot(q.x - P.x, q.z - P.z)); audio.hums(hums.slice(0, 3));
     sim.hazards.forEach((h, i) => { const g = this.hz[i]; g.position.set(h.x, h.y, h.z); g.children[0].rotation.y = t * 2; g.children[1].rotation.y = -t * 1.3; g.children[0].scale.setScalar(1 + 0.12 * Math.sin(t * 8 + i)); });
     const px = lerp(P.px, P.x, alpha), py = lerp(P.py, P.y, alpha), pz = lerp(P.pz, P.z, alpha), yaw = P.ph + wrapAngle(P.h - P.ph) * alpha, sp01 = P.speed / P.veh.top;
+    this.drones.follow(dt, px, py, pz, yaw, this.look.set(px, py + 0.9, pz)); this.carrier.update(dt);
     const yawRate = Math.abs(wrapAngle(yaw - this.yawPrev)) / Math.max(dt, 1e-3); this.yawPrev = yaw;
     const dev = a.device, pi = sim.racers.indexOf(P); hud.menuHint = ctl(dev, 'ESC — MENU   ·   C — VIEW', 'START — MENU   ·   RB — VIEW', `HOLD ${xr.labels.menu} — MENU   ·   ${xr.labels.view} — VIEW   ·   ${xr.labels.turn} ↕ — SEAT`);
     if (!this.xr) hud.vrSeat = null;
     this.start?.tick(dt); const seated = !this.start || this.start.seated;
     if (a.camera && this.xr && seated && this.phase !== 'intro') { this.vrFirst = !this.vrFirst; this.ctx.settings.vr.cycleView = this.vrFirst ? 'cockpit' : 'chase'; hud.toast(this.vrFirst ? 'COCKPIT VIEW' : 'CHASE VIEW', 'info'); }
-    const first = this.xr ? this.vrFirst && seated : this.cockpit && this.phase !== 'intro';
-    this.cv[pi].firstPerson(first); this.cv[pi].setPower(this.phase === 'intro' ? smooth(clamp(this.t / this.introDur * 1.4 - 0.2, 0, 1)) : 1); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
+    const down = P.downT > 0; if (down) this.downCam += dt; const first = this.xr ? this.vrFirst && seated : this.cockpit && this.phase !== 'intro' && !down;
+    const me = this.cv[pi]; me.firstPerson(first); me.setPower(this.phase === 'intro' ? smooth(clamp(this.t / this.introDur * 1.4 - 0.2, 0, 1)) : 1);
+    // cockpit: the yoke and hands follow the controls, and the lamps beside the display show the light wall's state
+    const live = this.phase === 'play'; me.drive(live ? this.intent.steer : 0, live ? this.intent.accel : 0, live ? this.intent.brake : 0, sp01, P.boosting, dt);
+    me.setWall(!sim.lightwalls ? 'none' : P.wallT > 0 ? 'on' : P.wallCd <= 0 ? 'ready' : 'charging', 1 - P.wallCd / WALL_COOLDOWN); if (this.phase === 'outro') me.unseal(); hud.vrMode = first ? 'dash' : 'belt'; hud.drawVR(dt);
     if (this.xr && !seated) { if (!this.recentred) { this.recentred = true; this.offset.copy(cam.position); this.vrYaw = yaw; } this.start.placeBeside(px, py, pz, yaw, this.offset); hud.vrSeat = null; xr.showHands = true; xr.update(dt, false); engine.vignetteAmount = 0; }
     else if (this.xr) {
       // rider-relative frame: follows heading in yaw only (horizon stabilised), with a speed/turn-scaled comfort vignette
@@ -193,7 +217,7 @@ export class RaceSession extends BaseSession {
     } else if (this.phase !== 'intro') {
       this.camYaw = angleLerp(this.camYaw, yaw, 1 - Math.exp(-(first ? 60 : 6) * dt)); const fx = Math.sin(this.camYaw), fz = Math.cos(this.camYaw);
       if (first) { cam.position.set(px + fx * EYE.z, py + EYE.y, pz + fz * EYE.z); cam.lookAt(px + fx * 30, py + 0.95, pz + fz * 30); }
-      else { const d = 7.6 + sp01 * 2.4; this.v.set(px - fx * d, py + 3.1 + sp01 * 0.5, pz - fz * d); this.camPos.x = this.v.x; this.camPos.z = this.v.z; this.camPos.y = damp(this.camPos.y, this.v.y, 8, dt); cam.position.copy(this.camPos); cam.lookAt(px + fx * 10, py + 1.1, pz + fz * 10); }
+      else { const lift = down ? smooth(clamp(this.downCam / 1.2, 0, 1)) : 0, d = 7.6 + sp01 * 2.4 + lift * 9; this.v.set(px - fx * d, py + 3.1 + sp01 * 0.5 + lift * 7, pz - fz * d); this.camPos.x = this.v.x; this.camPos.z = this.v.z; this.camPos.y = damp(this.camPos.y, this.v.y, 8, dt); cam.position.copy(this.camPos); cam.lookAt(px + fx * 10, py + 1.1, pz + fz * 10); }
       const tf = engine.reducedMotion ? 66 : (first ? 74 : 62) + sp01 * (first ? 10 : 18) + (P.boosting ? 7 : 0); if (Math.abs(cam.fov - tf) > 0.1) { cam.fov = damp(cam.fov, tf, 4, dt); cam.updateProjectionMatrix(); }
     }
     // light walls: one instanced slab per piece, in its owner's colour, sinking away as it expires
@@ -210,11 +234,12 @@ export class RaceSession extends BaseSession {
       if (this.early) tip = sim.time < 4 ? 'GOAL: ' + this.goal().toUpperCase() : !this.moved ? ctl(dev, 'W throttle · A / D steer', 'RT throttle · LEFT STICK steer', 'ANY TRIGGER or GRIP throttle · EITHER STICK steers') : sim.time < 22 && this.tier.id === 2 ? ctl(dev, 'S + steer to DRIFT · SHIFT boost', 'LT + steer to DRIFT · A boost', xr.labels.move + ' BACK + steer to DRIFT · ' + xr.labels.surge + ' = SUPER SPEED') : null;
       // first sight of each thing on the road: say what it is, once or twice, as it comes up
       this.noteT -= dt; const ahead = (idx: number) => { let k = idx - P.idx; if (T.closed && k < -T.n / 2) k += T.n; return k * T.step; };
-      const flag = (kind: 'hazard' | 'pad' | 'slow', text: string) => { if (this.noteT > -3 || this.seen[kind] >= 2) return; this.seen[kind]++; this.note = text; this.noteT = 4.5; };
+      const flag = (kind: 'hazard' | 'pad' | 'slow' | 'gate', text: string) => { if (this.noteT > -3 || this.seen[kind] >= 2) return; this.seen[kind]++; this.note = text; this.noteT = 4.5; };
       for (const h of sim.hazards) { const d = ahead(h.idx); if (d > 10 && d < 110) { flag('hazard', 'RED CRYSTAL AHEAD = HAZARD · HITTING ONE STALLS YOU · STEER ROUND IT'); break; } }
       for (const p of sim.pads) { const d = ahead(p.i0); if (d > 10 && d < 90) { flag('pad', 'GREEN ARROWS = SPEED STRIP · RIDE OVER THEM FOR FREE SPEED'); break; } }
+      for (const g of sim.gates) { const d = ahead(g.idx); if (d > 10 && d < 110) { flag('gate', 'GOLD HOOP = CHARGE GATE · RIDE THROUGH IT TO RECHARGE YOUR LIGHT WALL'); break; } }
       for (const z of sim.slows) { const d = ahead(z.i0); if (d > 10 && d < 120) { flag('slow', 'PURPLE HAZE = STORM CELL · IT CUTS YOUR SPEED UNTIL YOU ARE THROUGH'); break; } }
-      if (this.noteT > 0) tip = this.note;
+      if (this.noteT > 0) tip = this.note; if (P.downT > 0) tip = `DEREZZED — RE-FORMING IN ${Math.ceil(P.downT)}`;
       if (sim.lightwalls) {
         // the light wall only matters with someone on your tail, so that is when it is offered
         let tail = false; for (const r of sim.racers) { if (r.isPlayer || r.out || r.downT > 0) continue; const back = (P.progress - r.progress) * T.step; if (back > 3 && back < 26 && Math.abs(r.d - P.d) < 6) { tail = true; break; } }

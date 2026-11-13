@@ -167,6 +167,7 @@ export class AudioEngine {
       case 'explosion': this.tone(d, t, 'sine', 120, 28, 0.9, 0.9); this.burst(d, t, 'lowpass', 4000, 80, 0.5, 1, 0.9); break;
       case 'platformDown': this.tone(d, t, 'sawtooth', 300, 40, 0.7, 0.25); this.burst(d, t, 'lowpass', 1200, 100, 1, 0.6, 0.3); break;
       case 'platformUp': this.tone(d, t, 'sine', 180, 520, 0.4, 0.18); break;
+      case 'canopy': this.burst(d, t, 'bandpass', 2600, 700, 1.4, 0.75, 0.22); this.tone(d, t + 0.72, 'sine', 150, 55, 0.2, 0.45); break;
       case 'shift': this.tone(d, t, 'sawtooth', 70, 140, 1.4, 0.2, 0.4); this.burst(d, t, 'bandpass', 300, 1800, 2, 1.4, 0.25); break;
       case 'interfere': for (let i = 0; i < 10; i++) this.burst(d, t + i * 0.05, 'bandpass', 400 + Math.random() * 4000, 500, 8, 0.04, 0.3); break;
       case 'spawn': this.tone(d, t, 'sine', 200, 1400, 0.5, 0.14, 0.2); this.burst(d, t, 'highpass', 3000, 9000, 0.7, 0.5, 0.1); break;
