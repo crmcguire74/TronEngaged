@@ -68,7 +68,7 @@ export class RaceSession extends BaseSession {
     this.patrol = new Patrol(ctx.assets, { cx, cz, radius: R * 0.75, height: minY + 72, floorY: minY, count: ctx.settings.quality === 'low' ? 2 : 3, color: th.accent }); W.add(this.patrol.group);
     // a camera drone paces the player, and a heavy carrier crosses the sky beyond the circuit
     this.drones = new Drones(ctx.assets, ctx.settings.quality === 'low' ? 1 : 2, th.accent); W.add(this.drones.group);
-    this.carrier = new Carrier(ctx.assets, th.accent, { cx, cz, offset: R + 160, alt: minY + (tier.environment === 'outlands' ? 140 : 96), heading: 0.7, len: R * 2 + 1500, key: tier.environment === 'outlands' ? 'hauler' : 'recognizer', speed: tier.environment === 'outlands' ? 7 : 9 }); W.add(this.carrier.group);
+    this.carrier = new Carrier(ctx.assets, th.accent, { cx, cz, offset: R + 160, alt: minY + (tier.environment === 'outlands' ? 140 : 78), heading: 0.7, len: R * 2 + 1500, key: tier.environment === 'outlands' ? 'hauler' : 'recognizer', speed: tier.environment === 'outlands' ? 7 : 9 }); W.add(this.carrier.group);
     const ground = gridFloor(6000, th, 10, { fade: 1400, glow: 0.5 }); ground.position.set(cx, groundY, cz); W.add(ground); this.timed.push(ground.material as THREE.ShaderMaterial);
     // road ribbon: real geometry matching the simulated width exactly
     const road = new THREE.ShaderMaterial({ side: THREE.DoubleSide, uniforms: { uLine: { value: new THREE.Color(th.accent) }, uAcc: { value: new THREE.Color(th.accent2) }, uTime: { value: 0 }, uW: { value: t.width } },

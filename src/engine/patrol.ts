@@ -105,12 +105,14 @@ export class Carrier {
   /**
    * `key` picks the model: the standard carrier, the heavy Overwatch Hauler over the Outlands, or the Recognizer.
    * The Recognizer arrives about two units tall and standing on its own feet, so it is scaled up to a seventy-metre
-   * gantry and flown lower than the others: it is meant to loom over the grid, not pass as a speck overhead.
+   * gantry and flown lower than the others: `alt` is where its feet hang, and it is meant to loom over the grid
+   * rather than pass as a speck overhead.
    */
   constructor(assets: Assets, color: number, private p: { cx: number; cz: number; offset: number; alt: number; heading: number; len: number; speed?: number; key?: string }) {
     const key = p.key && assets.has(p.key) ? p.key : 'carrier';
     if (!assets.has(key)) return; this.o = assets.instance(key, { cloneMaterials: true }).root;
-    if (key === 'recognizer') { this.o.scale.setScalar(32); this.o.position.y = -70; }
+    // update() rewrites position every frame, so a height offset has to live on the scale/alt, not on the model
+    if (key === 'recognizer') this.o.scale.setScalar(32);
     this.nav = skinFleet(this.o, color);
     this.o.rotation.y = p.heading; this.group.add(this.o); this.s = p.len * 0.35;
   }

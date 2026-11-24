@@ -43,7 +43,7 @@ export class CombatSession extends BaseSession {
     // patrol skimmers circle above the stadium, sweeping the grid with searchlights
     this.patrol = new Patrol(ctx.assets, { cx: 0, cz: 0, radius: H * 1.1 + 20, height: 48, floorY: 0, count: ctx.settings.quality === 'low' ? 2 : 3, color: th.accent }); W.add(this.patrol.group);
     this.drones = new Drones(ctx.assets, 2, th.accent); W.add(this.drones.group);
-    this.carrier = new Carrier(ctx.assets, th.accent, { cx: 0, cz: 0, offset: H + 230, alt: 118, heading: 2.3, len: 1800, key: 'recognizer', speed: 9 }); W.add(this.carrier.group);
+    this.carrier = new Carrier(ctx.assets, th.accent, { cx: 0, cz: 0, offset: H + 230, alt: 74, heading: 2.3, len: 1800, key: 'recognizer', speed: 9 }); W.add(this.carrier.group);
     if (tier.environment === 'championship') { this.crowd = new Crowd(H * 1.5 + 14, 4, 8, 260, th, 4); W.add(this.crowd.mesh); }
     // riders
     sim.cycles.forEach((c) => {
