@@ -96,7 +96,7 @@ describe('disc AI and arenas', () => {
     for (const m of ['positioning', 'aiming', 'attacking', 'recovering']) expect(seen.has(m)).toBe(true);
     expect(seen.has('dodging') || seen.has('defending')).toBe(true);
   });
-  it('all 30 authored arenas pass reachability and clearance validation', () => {
+  it('every authored arena passes reachability and clearance validation', () => {
     for (const t of DISC_TIERS) expect(validateArena(buildDiscConfig(t, 'standard').arena), `tier ${t.id}`).toEqual([]);
   });
   it('simulation is deterministic for a given seed', () => {
