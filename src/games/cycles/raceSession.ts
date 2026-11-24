@@ -7,13 +7,13 @@ import { TONE, edgeBlock, gridFloor, hardlight, lights, skyDome, suppliedSky, sk
 import { Ribbon } from '../../engine/vfx';
 import { Carrier, Drones, Patrol } from '../../engine/patrol';
 import { angleLerp, clamp, damp, lerp, smooth, wrapAngle } from '../../engine/math';
-import { buildRaceConfig } from '../../progression/build';
+import { buildRaceConfig, raceRivalModels } from '../../progression/build';
 import { raceFinalScore } from '../../progression/scoring';
 import { DIFFICULTIES, type DifficultyId, type TierDefinition } from '../../progression/types';
 import { INTERCEPTOR_ID, RaceSim, WALL_COOLDOWN, WALL_LAY, type RaceIntent } from './race';
 import { inFeature, wrapIdx, type Track } from './track';
 import { buildScenery } from './scenery';
-import { RIVAL_MODELS, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, css, cycleAssets, playerTrail } from './view';
+import { StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, css, cycleAssets, playerTrail } from './view';
 
 const GATE = 0xffc23a;
 /** Barriers the interceptor drops belong to no rider, so they get their own warning colour. */
@@ -54,7 +54,7 @@ export class RaceSession extends BaseSession {
   private cv: CycleView[] = []; private tails: Ribbon[] = []; private colors: number[] = []; private hz: THREE.Object3D[] = []; private timed: THREE.ShaderMaterial[] = []; private lines: SpeedLines; private fog: THREE.FogExp2;
   private patrol!: Patrol; private drones!: Drones; private carrier!: Carrier; private look = new THREE.Vector3(); private downCam = 0; private camYaw = 0; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private radarPts: number[] = []; private ext = { cx: 0, cz: 0, r: 1 }; private storm = false; private padT = 0; private format: string; private yawPrev = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private wallMesh: THREE.InstancedMesh | null = null; private m4 = new THREE.Matrix4(); private q4 = new THREE.Quaternion(); private s4 = new THREE.Vector3(); private col4 = new THREE.Color(); private walled = false; private surgeT = 0; private boostPrev = false; private seatDirty = false; private early: boolean; private moved = false; private kills = 0; private seen = { hazard: 0, pad: 0, slow: 0, gate: 0 }; private gv: { g: THREE.Group; spin: THREE.Group; fill: THREE.MeshBasicMaterial }[] = []; private jet: THREE.Object3D | null = null; private jetTrail: Ribbon | null = null; private inTunnel = false; private noteT = 0; private note = ''; /** per-rider damped nose attitude, so rolling ground never judders the frame */ private pitchS: number[] = [];
 
-  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...RIVAL_MODELS, 'azure'], 'azure'), ...(['metropolis', 'neon-circuit'].includes(tier.environment) ? ['city'] : []), ...(tier.modifiers.includes('interceptor') ? ['jet'] : []), 'craft', 'drone', tier.environment === 'outlands' ? 'hauler' : 'carrier']; }
+  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...raceRivalModels(tier, cycle), 'azure'], 'azure'), ...(['metropolis', 'neon-circuit'].includes(tier.environment) ? ['city'] : []), ...(tier.modifiers.includes('interceptor') ? ['jet'] : []), 'craft', 'drone', tier.environment === 'outlands' ? 'hauler' : 'recognizer']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0, stage = 0) {
     super(ctx, tier, diff);
@@ -68,7 +68,7 @@ export class RaceSession extends BaseSession {
     this.patrol = new Patrol(ctx.assets, { cx, cz, radius: R * 0.75, height: minY + 72, floorY: minY, count: ctx.settings.quality === 'low' ? 2 : 3, color: th.accent }); W.add(this.patrol.group);
     // a camera drone paces the player, and a heavy carrier crosses the sky beyond the circuit
     this.drones = new Drones(ctx.assets, ctx.settings.quality === 'low' ? 1 : 2, th.accent); W.add(this.drones.group);
-    this.carrier = new Carrier(ctx.assets, th.accent, { cx, cz, offset: R + 160, alt: minY + 140, heading: 0.7, len: R * 2 + 1500, key: tier.environment === 'outlands' ? 'hauler' : 'carrier', speed: tier.environment === 'outlands' ? 7 : undefined }); W.add(this.carrier.group);
+    this.carrier = new Carrier(ctx.assets, th.accent, { cx, cz, offset: R + 160, alt: minY + (tier.environment === 'outlands' ? 140 : 96), heading: 0.7, len: R * 2 + 1500, key: tier.environment === 'outlands' ? 'hauler' : 'recognizer', speed: tier.environment === 'outlands' ? 7 : 9 }); W.add(this.carrier.group);
     const ground = gridFloor(6000, th, 10, { fade: 1400, glow: 0.5 }); ground.position.set(cx, groundY, cz); W.add(ground); this.timed.push(ground.material as THREE.ShaderMaterial);
     // road ribbon: real geometry matching the simulated width exactly
     const road = new THREE.ShaderMaterial({ side: THREE.DoubleSide, uniforms: { uLine: { value: new THREE.Color(th.accent) }, uAcc: { value: new THREE.Color(th.accent2) }, uTime: { value: 0 }, uW: { value: t.width } },

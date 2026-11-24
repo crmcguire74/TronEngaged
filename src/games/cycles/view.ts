@@ -9,9 +9,9 @@ import { cosmetic } from '../../progression/rewards';
 import { GloveHand } from '../../engine/hands';
 import { HoloGauge, holoFrame } from './holo';
 
-export const CYCLE_COLORS: Record<string, number> = { azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0, argon: 0x5affd8, moto: 0xff8a3c };
+export const CYCLE_COLORS: Record<string, number> = { azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0, argon: 0x5affd8, moto: 0xff8a3c, agile: 0xc8ff3c, flynn: 0xff2f4f };
 /** Every rival model, in the order riders are assigned them. */
-export const RIVAL_MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'argon', 'moto'];
+export const RIVAL_MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'argon', 'moto', 'agile', 'flynn'];
 export const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 export const playerTrail = (ctx: Ctx) => cosmetic('trail:' + ctx.settings.trail)?.color ?? 0x4fe3ff;
 /**
@@ -25,9 +25,12 @@ const FIT: Record<string, { s: number; y: number; turn: number; x?: number; z?: 
   argon: { s: 1.06, y: 0, turn: Math.PI },
   // Moto de Tron: eleven metres long down +X, origin off to one side and a metre above the floor
   moto: { s: 0.225, y: -1.21, turn: Math.PI / 2, x: 2.91, z: -3.0 },
+  // TE:BG Agile and Flynn's: both already sit on the floor and are centred, they just arrive very small
+  agile: { s: 10.4, y: 0, turn: Math.PI },
+  flynn: { s: 8.97, y: 0, turn: Math.PI },
 };
 /** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
-const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson' };
+const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson', agile: 'char:ivory', flynn: 'char:cobalt' };
 export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'cockpit2', 'cockpit3', 'cockpit4', 'console', 'hands']).filter(Boolean))];
 /** Rider eye point relative to the cycle origin (metres): x right-handed, y up, z forward. */
 export const EYE = { y: 1.27, z: -0.2 };

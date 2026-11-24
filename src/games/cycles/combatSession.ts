@@ -6,11 +6,11 @@ import { Carrier, Drones, Patrol } from '../../engine/patrol';
 import { TONE, Crowd, boundaryWall, edgeBlock, gridFloor, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { CITY_PANO } from '../../engine/assets';
 import { angleLerp, clamp, damp, lerp, smooth } from '../../engine/math';
-import { buildCombatConfig } from '../../progression/build';
+import { buildCombatConfig, combatRivalModels } from '../../progression/build';
 import { cycleFinalScore } from '../../progression/scoring';
 import { DIFFICULTIES, type DifficultyId, type TierDefinition } from '../../progression/types';
 import { CombatSim, DIRS, type Cycle, type CycleIntent } from './combat';
-import { RIVAL_MODELS, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, WallTrail, css, cycleAssets, playerTrail } from './view';
+import { StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, WallTrail, css, cycleAssets, playerTrail } from './view';
 
 const yawOf = (dir: number) => Math.atan2(DIRS[dir][0], DIRS[dir][1]);
 const TAUNTS = ['Too slow.', 'Flatlined.', 'Loser.', 'Boxed in.', 'Recompile and return.'];
@@ -24,7 +24,7 @@ export class CombatSession extends BaseSession {
   private timed: THREE.ShaderMaterial[] = []; private floor: THREE.Mesh; private crowd: Crowd | null = null; private patrol: Patrol; private drones: Drones; private carrier: Carrier; private look = new THREE.Vector3(); private yokeYaw = 0; private ionSeen = false; private yokeKick = 0; private lines: SpeedLines;
   private camYaw = Math.PI; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private shrinking = false; private deadT = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private surgeT = 0; private boostPrev = false; private seatDirty = false; private turned = false; private proxT = 0; private early: boolean;
 
-  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...RIVAL_MODELS], 'azure'), 'stand', 'pylon', 'craft', 'drone', 'carrier']; }
+  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...combatRivalModels(tier)], 'azure'), 'stand', 'pylon', 'craft', 'drone', 'recognizer', 'arena']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0) {
     super(ctx, tier, diff);
@@ -43,7 +43,7 @@ export class CombatSession extends BaseSession {
     // patrol skimmers circle above the stadium, sweeping the grid with searchlights
     this.patrol = new Patrol(ctx.assets, { cx: 0, cz: 0, radius: H * 1.1 + 20, height: 48, floorY: 0, count: ctx.settings.quality === 'low' ? 2 : 3, color: th.accent }); W.add(this.patrol.group);
     this.drones = new Drones(ctx.assets, 2, th.accent); W.add(this.drones.group);
-    this.carrier = new Carrier(ctx.assets, th.accent, { cx: 0, cz: 0, offset: H + 260, alt: 150, heading: 2.3, len: 1800 }); W.add(this.carrier.group);
+    this.carrier = new Carrier(ctx.assets, th.accent, { cx: 0, cz: 0, offset: H + 230, alt: 118, heading: 2.3, len: 1800, key: 'recognizer', speed: 9 }); W.add(this.carrier.group);
     if (tier.environment === 'championship') { this.crowd = new Crowd(H * 1.5 + 14, 4, 8, 260, th, 4); W.add(this.crowd.mesh); }
     // riders
     sim.cycles.forEach((c) => {
@@ -69,7 +69,9 @@ export class CombatSession extends BaseSession {
   }
 
   private buildStadium(H: number) {
-    const { assets } = this.ctx, th = this.th, W = this.world; if (!assets.has('stand') || !assets.has('pylon')) return;
+    const { assets } = this.ctx, th = this.th, W = this.world;
+    this.buildArenaShell(H);
+    if (!assets.has('stand') || !assets.has('pylon')) return;
     const trim = new THREE.MeshBasicMaterial({ color: new THREE.Color(th.accent).multiplyScalar(1.35) }), glass = new THREE.MeshBasicMaterial({ color: new THREE.Color(th.accent).lerp(new THREE.Color(th.accent2), 0.25).multiplyScalar(0.14) });
     const skin = (m: THREE.Material) => (m.name === 'Trim' ? trim : m.name === 'Window' ? glass : m);
     // one instanced draw per material for all grandstand modules
@@ -80,6 +82,39 @@ export class CombatSession extends BaseSession {
     }
     stand.traverse((o: any) => { if (!o.isMesh) return; const im = new THREE.InstancedMesh(o.geometry, skin(o.material), mats.length); mats.forEach((m, k) => im.setMatrixAt(k, new THREE.Matrix4().multiplyMatrices(m, o.matrixWorld))); im.frustumCulled = false; im.castShadow = false; W.add(im); });
     for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const py = assets.instance('pylon').root; py.traverse((o: any) => { if (o.isMesh) { o.material = skin(o.material); o.castShadow = false; } }); py.position.set(sx * (H + 13), 0, sz * (H + 13)); W.add(py); }
+  }
+
+  /**
+   * The supplied lightcycle arena, stood on the horizon as a second venue across the grid.
+   *
+   * It is a complete enclosed arena — bowl, floor and roof — not an open shell, so scaling it round the playfield
+   * swallows the whole scene: the camera ends up inside a lit box with the grid hidden under its floor. Put far out
+   * and large instead, it does what it is good for, which is giving the skyline something recognisable in it.
+   */
+  private buildArenaShell(H: number) {
+    const { assets } = this.ctx, W = this.world; if (!assets.has('arena')) return;
+    const a = assets.instance('arena', { cloneMaterials: true }).root;
+    const box = new THREE.Box3().setFromObject(a), size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+    const span = Math.max(size.x, size.z) || 200, k = 520 / span;
+    a.scale.setScalar(k);
+    // well beyond the grandstands, turned a little off-axis so it does not look placed on a grid line
+    const dist = H + 1250, ang = 2.05;
+    a.position.set(Math.sin(ang) * dist - centre.x * k, -box.min.y * k - 6, Math.cos(ang) * dist - centre.z * k);
+    a.rotation.y = ang + 0.5;
+    a.traverse((o: any) => {
+      if (!o.isMesh) return;
+      o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!m) continue;
+        // at this range it is a silhouette: knock the surfaces right down and keep its own lights from blooming
+        if (m.color) m.color.multiplyScalar(0.12);
+        if ('metalness' in m) { m.metalness = 0.6; m.roughness = 0.6; }
+        if (m.emissive) m.emissiveIntensity = Math.min(m.emissiveIntensity ?? 1, 0.25);
+        if (m.isMeshBasicMaterial && m.color) m.color.multiplyScalar(0.3);
+        m.fog = true;
+      }
+    });
+    W.add(a);
   }
 
   private addObstacle(i: number) {

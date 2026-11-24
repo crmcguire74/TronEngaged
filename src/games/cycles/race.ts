@@ -12,6 +12,11 @@ export const VEHICLES: Record<string, VehicleStats & { label: string; blurb: str
   violet: { label: 'Violet Apex', blurb: 'Highest top speed, heavy steering', top: 66, accel: 23, handling: 0.9 },
   argon: { label: 'Argon Runner', blurb: 'Light chassis, quick direction changes', top: 60.5, accel: 28, handling: 1.1 },
   moto: { label: 'Moto Bulk', blurb: 'Heavy: hard to shove, slow to turn', top: 63, accel: 24, handling: 0.84 },
+  // Every machine has to give something up: Agile corners best and is the slowest in a straight line, Flynn's is
+  // near the top end but lazy to turn and slow to build speed. Without the trade they were simply upgrades, and the
+  // field they were dropped into got quicker across the board.
+  agile: { label: 'Agile', blurb: 'Corners best on the grid, slowest down a straight', top: 57.5, accel: 27, handling: 1.2 },
+  flynn: { label: "Flynn's", blurb: 'Big top end, heavy steering and a slow build', top: 64.5, accel: 23.5, handling: 0.88 },
 };
 export interface RaceIntent { steer: number; accel: number; brake: number; boost: boolean; ability: boolean; /** rivals only: fire a stun pulse */ pulse?: boolean }
 export interface RaceRival { skill: number; model: string }
@@ -63,8 +68,9 @@ export class RaceSim {
   constructor(cfg: RaceConfig) {
     this.cfg = cfg; this.rng = new Rng(cfg.seed); const t = (this.track = cfg.track); // every race against other riders has the light wall; later tiers add ramming
     const hasJet = cfg.modifiers.includes('interceptor');
-    // the interceptor drops light walls, so wall simulation is on for its events even where no rider carries one
-    this.lightwalls = hasJet || (cfg.rivals.length > 0 && cfg.format !== 'timetrial' && cfg.format !== 'gauntlet');
+    // the interceptor drops light walls, so wall simulation is on for its events even where no rider carries one.
+    // 'no-walls' turns them off for events that are meant to be a clean speed contest.
+    this.lightwalls = hasJet || (cfg.rivals.length > 0 && cfg.format !== 'timetrial' && cfg.format !== 'gauntlet' && !cfg.modifiers.includes('no-walls'));
     this.ramming = this.lightwalls && cfg.rivals.length > 0 && cfg.modifiers.includes('ramming');
     if (hasJet) this.jet = { idx: 0, d: 0, y: 0, x: 0, z: 0, target: 0, cd: 7, runT: 0, lead: 95 };
     const solo = cfg.format === 'timetrial' || cfg.format === 'gauntlet';

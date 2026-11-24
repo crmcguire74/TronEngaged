@@ -32,10 +32,26 @@ export function buildDiscConfig(t: TierDefinition, diff: DifficultyId, seedSalt 
   };
 }
 
-const MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'ember', 'wraith'];
+const MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'agile', 'argon', 'flynn', 'moto'];
+/** Machines a Combat tier fields, in the order riders are assigned them. */
+export function combatRivalModels(t: TierDefinition): string[] {
+  const out: string[] = []; for (const e of t.enemies) for (let i = 0; i < e.count; i++) out.push(MODELS[out.length % MODELS.length]);
+  return out;
+}
+const RACE_POOL = ['ember', 'agile', 'argon', 'wraith', 'flynn', 'moto', 'jade', 'bulwark', 'violet', 'azure'];
+/**
+ * Machines a Race tier fields. The roster is large enough now that preloading all of it on every event would cost
+ * tens of megabytes, so the sessions ask for exactly the models that will be on the grid.
+ */
+export function raceRivalModels(t: TierDefinition, playerModel: string): string[] {
+  const e = t.enemies[0], others = RACE_POOL.filter((m) => m !== playerModel), out: string[] = [];
+  for (let i = 0; i < (e?.count ?? 0); i++) out.push(others[i % others.length]);
+  return out;
+}
 export function buildCombatConfig(t: TierDefinition, diff: DifficultyId, seedSalt = 0): CombatConfig {
   const D = DIFFICULTIES[diff]; const rivals: RivalDef[] = [];
-  for (const e of t.enemies) for (let i = 0; i < e.count; i++) rivals.push({ profile: e.type as RivalDef['profile'], skill: e.difficulty, model: MODELS[rivals.length % MODELS.length] });
+  const models = combatRivalModels(t);
+  for (const e of t.enemies) for (let i = 0; i < e.count; i++) rivals.push({ profile: e.type as RivalDef['profile'], skill: e.difficulty, model: models[rivals.length] });
   return { half: num(t, 'half', 70), seed: hashSeed('combat', t.id, t.name, seedSalt), speed: num(t, 'speed', 24) * (diff === 'apprentice' ? 0.9 : 1), rivals, modifiers: t.modifiers, pillars: num(t, 'pillars'), aiSkill: D.aiSkill, hazardMul: D.hazards, resources: D.resources };
 }
 
@@ -48,8 +64,8 @@ export function buildRaceConfig(t: TierDefinition, diff: DifficultyId, playerMod
     // terrain and built sections: rolling crests, banked corners, and tunnels / bridges / city canyons round the lap
     hills: num(t, 'hills'), hillCount: num(t, 'hillCount', 3) + (stage % 2), bank: num(t, 'bank'),
     tunnels: num(t, 'tunnels'), bridges: num(t, 'bridges'), canyons: num(t, 'canyons') });
-  const e = t.enemies[0]; const rivals = []; const others = ['ember', 'argon', 'wraith', 'moto', 'jade', 'bulwark', 'violet', 'azure'].filter((m) => m !== playerModel);
-  for (let i = 0; i < (e?.count ?? 0); i++) rivals.push({ skill: (e.difficulty) * (1 - 0.06 * ((i * 7) % 4)), model: others[i % others.length] });
+  const e = t.enemies[0]; const rivals = []; const models = raceRivalModels(t, playerModel);
+  for (let i = 0; i < models.length; i++) rivals.push({ skill: (e.difficulty) * (1 - 0.06 * ((i * 7) % 4)), model: models[i] });
   // from the fourth tier on, riders can be rammed off the road
   return { track, seed, laps: num(t, 'laps', 2), format, rivals, modifiers: t.id >= 4 ? [...t.modifiers, 'ramming'] : t.modifiers, aiSkill: D.aiSkill, hazardMul: D.hazards, resources: D.resources, passPlace: num(t, 'passPlace', 3), playerModel, hazards: num(t, 'hazards'), pads: num(t, 'pads', 3) };
 }

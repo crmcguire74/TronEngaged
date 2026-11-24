@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-24T02:46:47.531Z",
+  "generated": "2026-11-24T05:19:24.516Z",
   "note": "Source files in assets/ are never moved or renamed; runtime copies live in public/game-assets/.",
   "assets": [
     {
@@ -466,6 +466,131 @@
       "animations": [],
       "extensions": [],
       "generator": "Sketchfab-12.67.0"
+    },
+    {
+      "name": "cycle-agile",
+      "source": "assets/Concept Images/New/cycles/agile_lightcycle__tron_evolution_battle_grids.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-agile.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 3029112,
+      "intendedUsage": "Rival cycle (nimble class) and a player unlock. \"Agile Lightcycle - Tron Evolution Battle Grids\" by Shriker1, Sketchfab Standard",
+      "status": "ready",
+      "triangles": 47434,
+      "meshes": 6,
+      "materials": [
+        "pipingGlow_MAT",
+        "Off_Black",
+        "Black",
+        "baseMetal_MAT",
+        "Handle_Bars",
+        "LED_Lights"
+      ],
+      "textures": 6,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Sketchfab-15.56.0"
+    },
+    {
+      "name": "cycle-flynn",
+      "source": "assets/Concept Images/New/cycles/flynns_lightcycle__tron_evolution_battle_grids.glb",
+      "runtime": "game-assets/vehicles/player/cycle-flynn.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 4252180,
+      "intendedUsage": "Rival cycle (fast class) and a player unlock. \"Flynn's Lightcycle - Tron Evolution Battle Grids\" by Shriker1, Sketchfab Standard",
+      "status": "ready",
+      "triangles": 37344,
+      "meshes": 2,
+      "materials": [
+        "LCFlynn"
+      ],
+      "textures": 4,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Sketchfab-15.55.0"
+    },
+    {
+      "name": "recognizer",
+      "source": "assets/Concept Images/New/vehicles/recognizer_-_tron_1982.glb",
+      "runtime": "game-assets/vehicles/air/recognizer.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 410364,
+      "intendedUsage": "Recognizer standing over the cycle events. \"Recognizer - Tron (1982)\" by arabinowitz, Sketchfab Standard",
+      "status": "ready",
+      "triangles": 8078,
+      "meshes": 50,
+      "materials": [
+        "Emission_Outer",
+        "Emission_Inner",
+        "Black_Material",
+        "material"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [],
+      "generator": "Sketchfab-16.75.0"
+    },
+    {
+      "name": "lightcycle-arena",
+      "source": "assets/Concept Images/New/environments/lightcycle_arena_rev_02__tebg (3).glb",
+      "runtime": "game-assets/environments/cycle-arenas/lightcycle-arena.glb",
+      "category": "environment",
+      "format": "GLB",
+      "sizeBytes": 4304516,
+      "intendedUsage": "Shell around the cycle-combat grid (decor only). \"Lightcycle Arena Rev 02 - TE:BG\" by Shriker1, Sketchfab Standard",
+      "status": "ready",
+      "triangles": 19894,
+      "meshes": 30,
+      "materials": [
+        "Rings",
+        "material",
+        "NewArrow",
+        "Glow_White",
+        "Windows",
+        "Spawn_Rings",
+        "Glow_Cyan",
+        "Arena_Wall_Barrier",
+        "Large_Buildings_2",
+        "Large_Buildings_1",
+        "Small_Buildings_1",
+        "Small_Buildings_2",
+        "Ramp_Border",
+        "Arena_Flood_Lights",
+        "Arena_Floor",
+        "City_Floor",
+        "Entrance_Facade",
+        "Arena_Wall",
+        "Outer_City_Facade",
+        "Inner_City_Towers",
+        "Crowd_Stands",
+        "Crowd_Stands_Reflection",
+        "Ramp_Center",
+        "Ramp_Edges",
+        "Ramp_Arrows",
+        "Ramp",
+        "Glow_Blue"
+      ],
+      "textures": 29,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength",
+        "KHR_materials_specular"
+      ],
+      "generator": "Sketchfab-16.68.0"
     },
     {
       "name": "light-jet",
