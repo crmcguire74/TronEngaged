@@ -1,4 +1,13 @@
 /** Data-driven rival definitions. Difficulty comes from tactics (banking, baiting, coordination), never hidden attacks: every throw keeps a visible wind-up tell. */
+/**
+ * What a fighter throws. `disc` ricochets and can be parried; `lance` is a fast straight bolt that spends itself on
+ * the first surface and cannot be parried, but it is slow to wind up and easy to read; `arc` is a slow heavy blade
+ * that cuts through barriers and breaks the deck it lands on.
+ */
+export type Weapon = 'disc' | 'lance' | 'arc';
+/** A weapon and stat change a rival escalates to once its health drops past `hpAbove`. */
+export interface Upgrade { hpAbove: number; name: string; weapon?: Weapon; over: Partial<Archetype> }
+
 export interface Archetype {
   label: string; role: string;
   model: 'ivory' | 'crimson' | 'cobalt' | 'azure'; disc: 'ivory' | 'crimson' | 'azure'; tint: number; scale: number;
@@ -6,6 +15,8 @@ export interface Archetype {
   shieldUse: number; dodgeUse: number; bankShot: number; homing: number; burst: number;
   aimError: number; lead: number; discs: number; hopRate: number;
   special?: 'command' | 'disrupt';
+  weapon?: Weapon;
+  /** Escalation ladder, highest hpAbove first. Rivals with one re-arm as the fight wears on. */ upgrades?: Upgrade[];
   boss?: BossDef;
 }
 export interface BossPhase { hpAbove: number; name: string; over: Partial<Archetype>; onEnter: string[] }
@@ -20,6 +31,26 @@ export const ARCHETYPES: Record<string, Archetype> = {
   ricochet: { ...base, label: 'Ricochet Specialist', role: 'Favours angled bank shots', tint: 0x7dffb0, hp: 60, bankShot: 0.85, cooldown: [2.4, 3.4], aimError: 0.05, lead: 0.4, throwSpeed: 21 },
   hunter: { ...base, label: 'Hunter', role: 'Tracking discs — break line of sight or dodge late', model: 'crimson', disc: 'crimson', tint: 0xff4fa0, hp: 65, homing: 1.5, cooldown: [3.2, 4.4], windup: 0.9, throwSpeed: 15, aimError: 0.1 },
   disruptor: { ...base, label: 'Disruptor', role: 'Jams platform systems', tint: 0xb77bff, hp: 55, special: 'disrupt', cooldown: [3, 4], dodgeUse: 0.4, shieldUse: 0.3 },
+  // ----- armed rivals: these escalate through weapons as they take damage -----
+  lancer: {
+    ...base, label: 'Lancer', role: 'Straight bolts that cannot be parried — dodge, do not block', tint: 0x6cc4ff, hp: 65, speed: 3.6,
+    weapon: 'lance', throwSpeed: 26, cooldown: [3.0, 4.0], windup: 1.05, aimError: 0.055, dodgeUse: 0.35,
+    upgrades: [{ hpAbove: 0.45, name: 'Twin Lance', over: { burst: 2, cooldown: [2.5, 3.4], windup: 0.95 } }],
+  },
+  breaker: {
+    ...base, label: 'Breaker', role: 'Arc blades that cut barriers and break the deck under you', model: 'crimson', disc: 'crimson', tint: 0xff8a3c,
+    hp: 85, speed: 2.9, weapon: 'arc', throwSpeed: 15, cooldown: [3.4, 4.6], windup: 1.0, shieldUse: 0.5, aimError: 0.07,
+    upgrades: [{ hpAbove: 0.4, name: 'Heavy Arc', over: { burst: 2, cooldown: [2.8, 3.6], throwSpeed: 17 } }],
+  },
+  vanguard: {
+    ...base, label: 'Vanguard', role: 'Re-arms twice: disc, then lance, then arc', model: 'crimson', disc: 'crimson', tint: 0xffd166,
+    hp: 120, speed: 3.4, shieldUse: 0.6, cooldown: [2.8, 3.8], aimError: 0.055, discs: 2,
+    upgrades: [
+      { hpAbove: 0.62, name: 'Lance Array', weapon: 'lance', over: { throwSpeed: 27, windup: 0.95, burst: 2, cooldown: [2.6, 3.4] } },
+      { hpAbove: 0.3, name: 'Arc Blades', weapon: 'arc', over: { throwSpeed: 16, windup: 0.95, burst: 2, cooldown: [2.4, 3.2], homing: 0.6 } },
+    ],
+  },
+
   commander: { ...base, label: 'Commander', role: 'Calls synchronised volleys', model: 'crimson', disc: 'crimson', tint: 0xffb62e, scale: 1.08, hp: 110, special: 'command', shieldUse: 0.68, cooldown: [2.8, 3.6], aimError: 0.05, lead: 0.6 },
 
   'boss-guardian': {
@@ -52,6 +83,17 @@ export const ARCHETYPES: Record<string, Archetype> = {
       { hpAbove: 0.5, name: 'Intervention', over: { burst: 2, homing: 1.2 }, onEnter: ['summon:hunter:2', 'interfere'] },
       { hpAbove: 0.25, name: 'Domination', over: { burst: 3 }, onEnter: ['shift', 'surge:on', 'summon:striker:1'] },
       { hpAbove: 0, name: 'Last Directive', over: { burst: 3, cooldown: [1.9, 2.4], dodgeUse: 0.8 }, onEnter: ['orbit:2'] },
+    ] },
+  },
+  'boss-null': {
+    ...base, label: 'Null Kernel', role: 'Post-campaign boss: re-arms through every weapon', model: 'crimson', disc: 'crimson', tint: 0xff6a1f, scale: 1.42,
+    hp: 500, speed: 4.2, throwSpeed: 24, shieldUse: 0.7, dodgeUse: 0.6, bankShot: 0.45, aimError: 0.035, discs: 3, lead: 0.9, hopRate: 0.34, special: 'command',
+    boss: { title: 'NULL KERNEL', phases: [
+      { hpAbove: 0.8, name: 'Cold Start', over: {}, onEnter: ['orbit:1'] },
+      { hpAbove: 0.6, name: 'Lance Array', over: { weapon: 'lance', throwSpeed: 28, burst: 2, windup: 0.9, cooldown: [2.4, 3.2] }, onEnter: ['summon:lancer:2'] },
+      { hpAbove: 0.4, name: 'Arc Cascade', over: { weapon: 'arc', throwSpeed: 17, burst: 2, cooldown: [2.4, 3.0], homing: 0.8 }, onEnter: ['shift', 'summon:breaker:1'] },
+      { hpAbove: 0.2, name: 'Ground Zero', over: { weapon: 'arc', burst: 3, cooldown: [2.0, 2.6], dodgeUse: 0.8 }, onEnter: ['surge:on', 'summon:vanguard:1'] },
+      { hpAbove: 0, name: 'Null State', over: { weapon: 'lance', throwSpeed: 30, burst: 4, cooldown: [1.8, 2.3], homing: 0 }, onEnter: ['orbit:2', 'shift'] },
     ] },
   },
   'boss-prime': {

@@ -10,6 +10,8 @@ export const VEHICLES: Record<string, VehicleStats & { label: string; blurb: str
   jade: { label: 'Jade Lancer', blurb: 'Sharper handling, lower top end', top: 59.5, accel: 25, handling: 1.15 },
   ember: { label: 'Ember Rush', blurb: 'Explosive acceleration', top: 61, accel: 31, handling: 0.97 },
   violet: { label: 'Violet Apex', blurb: 'Highest top speed, heavy steering', top: 66, accel: 23, handling: 0.9 },
+  argon: { label: 'Argon Runner', blurb: 'Light chassis, quick direction changes', top: 60.5, accel: 28, handling: 1.1 },
+  moto: { label: 'Moto Bulk', blurb: 'Heavy: hard to shove, slow to turn', top: 63, accel: 24, handling: 0.84 },
 };
 export interface RaceIntent { steer: number; accel: number; brake: number; boost: boolean; ability: boolean; /** rivals only: fire a stun pulse */ pulse?: boolean }
 export interface RaceRival { skill: number; model: string }
@@ -30,6 +32,14 @@ export interface Racer {
 /** One piece of light wall laid behind a racer. It destroys rivals that ride into it and stuns the player. */
 export interface WallSeg { owner: number; x0: number; z0: number; x1: number; z1: number; y: number; until: number }
 export const WALL_LAY = 1.8, WALL_LIFE = 4.5, WALL_COOLDOWN = 8;
+/** Owner id of a barrier dropped by the interceptor: no rider has it, so it is live for the whole field. */
+export const INTERCEPTOR_ID = 0;
+/**
+ * Air interceptor: a light jet that shadows the circuit, runs down the leader and drops a hardlight barrier across
+ * part of the lane ahead of it. The barrier is an ordinary light wall owned by nobody, so every rider has to read it
+ * and go round. `lead` is how far ahead of its target the run is laid, in metres.
+ */
+export interface Interceptor { idx: number; d: number; y: number; x: number; z: number; target: number; cd: number; runT: number; lead: number }
 export interface Hazard { idx: number; d: number; r: number; amp: number; w: number; phase: number; x: number; y: number; z: number }
 export interface Pad { i0: number; i1: number; d: number; hw: number }
 /** Charge gate: a hoop over part of the lane. Riding through it recharges your light wall at once. */
@@ -44,6 +54,7 @@ export class RaceSim {
   /** True in light-wall events: the ability lays a wall instead of firing a pulse. */ readonly lightwalls: boolean; walls: WallSeg[] = [];
   /** True where a rider at super speed can shove another off line; shoved into a rail or a wall, a rival is destroyed. */ readonly ramming: boolean;
   racers: Racer[] = []; hazards: Hazard[] = []; pads: Pad[] = []; gates: ChargeGate[] = []; slows: SlowZone[] = []; events: SimEvent[] = [];
+  /** Present on tiers with the 'interceptor' modifier. */ jet: Interceptor | null = null;
   time = 0; state: 'active' | 'won' | 'lost' = 'active'; checkpoints: number[] = []; parTime: number;
   stats: RaceStats = { place: 1, field: 1, time: 0, parTime: 0, overtakes: 0, cleanSections: 0, sections: 0, scrapes: 0, driftMeters: 0, bestLap: 0, takedowns: 0 };
   /** The field shares one rhythm for laying walls, so a rider in the pack is not walled over and over. */ private rivalWallAt = 0;
@@ -51,7 +62,11 @@ export class RaceSim {
 
   constructor(cfg: RaceConfig) {
     this.cfg = cfg; this.rng = new Rng(cfg.seed); const t = (this.track = cfg.track); // every race against other riders has the light wall; later tiers add ramming
-    this.lightwalls = cfg.rivals.length > 0 && cfg.format !== 'timetrial' && cfg.format !== 'gauntlet'; this.ramming = this.lightwalls && cfg.modifiers.includes('ramming');
+    const hasJet = cfg.modifiers.includes('interceptor');
+    // the interceptor drops light walls, so wall simulation is on for its events even where no rider carries one
+    this.lightwalls = hasJet || (cfg.rivals.length > 0 && cfg.format !== 'timetrial' && cfg.format !== 'gauntlet');
+    this.ramming = this.lightwalls && cfg.rivals.length > 0 && cfg.modifiers.includes('ramming');
+    if (hasJet) this.jet = { idx: 0, d: 0, y: 0, x: 0, z: 0, target: 0, cd: 7, runT: 0, lead: 95 };
     const solo = cfg.format === 'timetrial' || cfg.format === 'gauntlet';
     const rivals = solo ? [] : cfg.rivals;
     const n = rivals.length + 1;
@@ -99,12 +114,12 @@ export class RaceSim {
     this.updateHazards(); while (this.walls.length && this.walls[0].until < this.time) this.walls.shift();
     for (const g of this.gates) g.flash = Math.max(0, g.flash - dt);
     for (const r of this.racers) { if (r.out) continue; if (r.downT > 0) { this.reform(r, dt); continue; } if (!r.isPlayer) this.drive(r, dt); this.stepRacer(r, r.isPlayer ? intent : r.intent, dt); }
+    if (this.jet) this.stepJet(dt);
     // rider contact
     for (let i = 0; i < this.racers.length; i++) for (let j = i + 1; j < this.racers.length; j++) {
       const a = this.racers[i], b = this.racers[j]; if (a.out || b.out || a.downT > 0 || b.downT > 0) continue;
       const dx = b.x - a.x, dz = b.z - a.z, dist = Math.hypot(dx, dz);
-      if (dist < RACER_R * 2 && dist > 1e-4) { const push = (RACER_R * 2 - dist) / 2, nx = dx / dist, nz = dz / dist; a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push; a.speed *= 0.985; b.speed *= 0.985; if (a.isPlayer || b.isPlayer) this.events.push({ type: 'bump', x: (a.x + b.x) / 2, y: a.y, z: (a.z + b.z) / 2 });
-        if (this.ramming && this.time > 4) { if (a.boosting && !b.boosting) this.shunt(a, b, nx, nz); else if (b.boosting && !a.boosting) this.shunt(b, a, -nx, -nz); } }
+      if (dist < RACER_R * 2 && dist > 1e-4) this.contact(a, b, dx / dist, dz / dist, (RACER_R * 2 - dist) / 2);
     }
     this.rank();
     this.rules(dt);
@@ -115,8 +130,9 @@ export class RaceSim {
    * and then re-forms on the track where it fell. That costs it the places the player earned without emptying the field.
    */
   private takedown(r: Racer, cause: 'wall' | 'rail', by: number) {
-    // an elimination event is the exception: there the field is meant to shrink, so a takedown is final
-    if (this.cfg.format === 'elimination' && !r.isPlayer) { r.out = true; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1; this.events.push({ type: 'eliminated', id: r.id, player: false, x: r.x, y: r.y, z: r.z, left: this.racers.filter((o) => !o.out).length, wall: cause === 'wall', rail: cause === 'rail', by }); return; }
+    // In an elimination event the timed cut is the elimination mechanic; a wall or a rail only costs a rider the
+    // places it takes to re-form. Making takedowns final as well used to empty the field inside the first lap and
+    // then cut whoever was left at the back, whatever they had done.
     r.downT = r.isPlayer ? 3 : 3.4; r.vx = r.vz = 0; r.speed = 0; r.wallT = 0; r.shoveT = 0; r.stun = 0; r.boosting = false; r.drifting = false; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1;
     this.events.push({ type: 'takedown', id: r.id, x: r.x, y: r.y, z: r.z, by, cause });
   }
@@ -127,12 +143,46 @@ export class RaceSim {
     this.events.push({ type: 'reform', id: r.id, x: r.x, y: r.y, z: r.z });
   }
 
-  /** A rider at super speed shoves the one it hits sideways, away from the contact. */
-  private shunt(by: Racer, r: Racer, nx: number, nz: number) {
+  /**
+   * Machine-on-machine contact. Riders separate, trade momentum along the contact normal and scrub speed in
+   * proportion to how hard they met, so a glancing touch costs a tenth and a proper hit costs the corner. Where
+   * ramming is live, the rider that arrived faster also shoves the other one bodily across the road.
+   */
+  private contact(a: Racer, b: Racer, nx: number, nz: number, push: number) {
+    a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
+    // closing speed along the contact normal drives everything below
+    const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
+    if (rel > 0) {
+      // a mostly inelastic exchange: both are thrown apart sideways rather than passing through each other
+      const j = rel * 0.62;
+      a.vx -= j * nx; a.vz -= j * nz; b.vx += j * nx; b.vz += j * nz;
+      // scrub costs the rider that closed the gap more than the one that was hit, so pack racing stays racing
+      const scrub = Math.min(0.15, rel * 0.013);
+      a.vx *= 1 - scrub; a.vz *= 1 - scrub; b.vx *= 1 - scrub * 0.6; b.vz *= 1 - scrub * 0.6;
+      a.speed = Math.hypot(a.vx, a.vz); b.speed = Math.hypot(b.vx, b.vz);
+      // a hard hit also knocks a rider off its line for a moment
+      if (rel > 9) { const st = Math.min(0.45, rel * 0.03); a.stun = Math.max(a.stun, st * 0.4); b.stun = Math.max(b.stun, st); a.drifting = b.drifting = false; }
+    }
+    const force = Math.max(0, rel);
+    if (a.isPlayer || b.isPlayer) this.events.push({ type: 'bump', x: (a.x + b.x) / 2, y: a.y, z: (a.z + b.z) / 2, force, hard: force > 7, mine: (a.isPlayer && rel > 0) || (b.isPlayer && rel > 0) });
+    if (!this.ramming || this.time < 4) return;
+    // only a side-on hit shoves: running into the back of someone slows you both, it does not throw them at a rail
+    const t = this.track, i = a.idx, side = Math.abs(nx * -t.tz[i] + nz * t.tx[i]);
+    if (side < 0.55) return;
+    // whoever arrived faster does the shoving; super speed counts for an extra margin of its own
+    const da = a.speed - b.speed + (a.boosting ? 8 : 0) - (b.boosting ? 8 : 0);
+    if (Math.abs(da) < 7) return;
+    if (da > 0) this.shunt(a, b, nx, nz, da); else this.shunt(b, a, -nx, -nz, -da);
+  }
+
+  /** A faster rider shoves the one it hits bodily across the road, hard enough to put it into a rail. */
+  private shunt(by: Racer, r: Racer, nx: number, nz: number, force: number) {
     if (r.shoveT > 0 || r.finished || r.graceT > 0) return; r.graceT = 4; const t = this.track, side = Math.sign(nx * -t.tz[r.idx] + nz * t.tx[r.idx]) || 1;
-    // push straight across the track, toward whichever rail the contact points at
-    r.shx = -t.tz[r.idx] * side * 13; r.shz = t.tx[r.idx] * side * 13; r.shoveT = 1.3; r.stun = Math.max(r.stun, 0.45); r.drifting = false;
-    this.events.push({ type: 'shunt', id: r.id, by: by.id, player: r.isPlayer, x: r.x, y: r.y, z: r.z });
+    // push straight across the track, toward whichever rail the contact points at, harder the bigger the mismatch
+    const p = Math.min(22, 9 + force * 0.7);
+    r.shx = -t.tz[r.idx] * side * p; r.shz = t.tx[r.idx] * side * p; r.shoveT = 1.1 + Math.min(0.7, force * 0.05); r.stun = Math.max(r.stun, 0.4 + Math.min(0.35, force * 0.02)); r.drifting = false;
+    by.speed *= 0.94; by.vx *= 0.94; by.vz *= 0.94; // the hit costs the rider that made it a little pace too
+    this.events.push({ type: 'shunt', id: r.id, by: by.id, player: r.isPlayer, x: r.x, y: r.y, z: r.z, force });
   }
 
   private stepRacer(r: Racer, it: RaceIntent, dt: number) {
@@ -173,7 +223,7 @@ export class RaceSim {
     if (Math.abs(r.d) > lim) {
       const sgn = Math.sign(r.d), nx = -t.tz[r.idx] * sgn, nz = t.tx[r.idx] * sgn, over = Math.abs(r.d) - lim; r.x -= nx * over; r.z -= nz * over; r.d = sgn * lim;
       // a shoved rival that reaches the rail is thrown off the road; the player takes a hard stall instead
-      if (r.shoveT > 0 && r.shx * nx + r.shz * nz > 2) { r.shx = r.shz = 0; if (!r.isPlayer) { this.takedown(r, 'rail', this.player.id); return; } r.stun = Math.max(r.stun, 0.9); r.vx *= 0.4; r.vz *= 0.4; }
+      if (r.shoveT > 0 && r.shx * nx + r.shz * nz > 2) { r.shx = r.shz = 0; if (!r.isPlayer) { this.takedown(r, 'rail', this.player.id); return; } r.stun = Math.max(r.stun, 0.9); r.vx *= 0.35; r.vz *= 0.35; this.events.push({ type: 'slam', id: r.id, x: r.x, y: r.y, z: r.z, player: true }); }
       const vn = r.vx * nx + r.vz * nz; if (vn > 0) { r.vx -= vn * nx; r.vz -= vn * nz; const loss = clamp(vn / (sp + 0.01), 0, 1); const k = 1 - 0.55 * loss; r.vx *= k; r.vz *= k; if (vn > 5) { scrape = true; if (!r.scrape) this.events.push({ type: 'scrape', id: r.id, x: r.x, y: r.y, z: r.z, hard: vn > 12 }); } }
       const th = Math.atan2(t.tx[r.idx], t.tz[r.idx]); r.h = wrapAngle(r.h + wrapAngle(th - r.h) * Math.min(1, 5 * dt));
       r.vx *= 1 - 0.5 * dt; r.vz *= 1 - 0.5 * dt; scrape = scrape || over > 0.02;
@@ -181,8 +231,9 @@ export class RaceSim {
     if (scrape && !r.scrape && r.isPlayer) { this.stats.scrapes++; this.sectorClean = false; }
     r.scrape = scrape;
     r.speed = Math.hypot(r.vx, r.vz);
-    // elevation follows the ribbon
-    const j = wrapIdx(t, r.idx + 1); r.y = lerp(t.y[r.idx], t.y[j], 0.5);
+    // elevation follows the banked ribbon; a three-tap average keeps a rider from stepping between samples
+    const jb = wrapIdx(t, r.idx + 1), ja = wrapIdx(t, r.idx - 1);
+    r.y = (t.y[ja] + 2 * t.y[r.idx] + t.y[jb]) / 4 + t.bank[r.idx] * r.d;
     // lap / checkpoint bookkeeping
     if (t.closed) { if (prevIdx > t.n * 0.7 && r.idx < t.n * 0.3) r.lap++; else if (prevIdx < t.n * 0.3 && r.idx > t.n * 0.7) r.lap--; }
     r.progress = r.lap * t.n + r.idx;
@@ -219,6 +270,30 @@ export class RaceSim {
       this.takedown(r, 'wall', w.owner);
       return;
     }
+  }
+
+  /**
+   * The interceptor shadows whoever is leading, then runs ahead and lays a barrier across part of the lane. It picks
+   * the side with more room so the drop is always survivable: there is a way through, but only one.
+   */
+  private stepJet(dt: number) {
+    const j = this.jet!, t = this.track;
+    const live = this.racers.filter((r) => !r.out && !r.finished && r.downT <= 0);
+    if (!live.length) return;
+    // it hunts the leader, which keeps the pressure on whoever is winning rather than on whoever is struggling
+    const lead = live.reduce((a, b) => (a.progress > b.progress ? a : b)); j.target = lead.id;
+    const ahead = wrapIdx(t, lead.idx + Math.round(j.lead / t.step));
+    trackPoint(t, ahead, j.d, pt); j.idx = ahead; j.x = pt.x; j.z = pt.z; j.y = pt.y + 16 + Math.sin(this.time * 0.8) * 2.5;
+    j.cd -= dt;
+    if (j.runT > 0) { j.runT -= dt; return; }
+    if (j.cd > 0 || this.time < 9) return;
+    // drop point: a barrier over roughly half the lane, on the side the leader is not using
+    const side = lead.d > 0 ? -1 : 1, hw = t.width / 2;
+    const d0 = side < 0 ? -hw + 0.4 : hw * 0.02, d1 = side < 0 ? -hw * 0.02 : hw - 0.4;
+    const a = trackPoint(t, ahead, d0, { x: 0, y: 0, z: 0 }), b = trackPoint(t, ahead, d1, { x: 0, y: 0, z: 0 });
+    this.walls.push({ owner: INTERCEPTOR_ID, x0: a.x, z0: a.z, x1: b.x, z1: b.z, y: a.y, until: this.time + 3.4 });
+    j.cd = Math.max(5.5, 11 - this.cfg.aiSkill * 8); j.runT = 1.1; j.d = -j.d || (this.rng.chance(0.5) ? 4 : -4);
+    this.events.push({ type: 'interceptorDrop', x: (a.x + b.x) / 2, y: a.y, z: (a.z + b.z) / 2, idx: ahead, side });
   }
 
   private finishedCount() { let n = 0; for (const r of this.racers) if (r.finished) n++; return n; }
@@ -272,7 +347,12 @@ export class RaceSim {
     const f = this.cfg.format, P = this.player; let done: null | boolean = null;
     if (f === 'elimination') {
       this.elimT -= dt; const active = this.racers.filter((r) => !r.out);
-      if (this.elimT <= 0 && active.length > 1) { this.elimT = this.elimEvery; const last = active.reduce((a, b) => (a.place > b.place ? a : b)); last.out = true; this.events.push({ type: 'eliminated', id: last.id, player: last.isPlayer, x: last.x, y: last.y, z: last.z, left: active.length - 1 }); }
+      // the timed cut only fires while three or more are still running: once attrition (walls, rails) has thinned the
+      // field to a head-to-head, it is settled at the line, not by the clock
+      // nobody is cut until the leader has a lap in: an elimination decided on the opening lap is decided by the grid
+      const opened = !this.track.closed || this.racers.some((r) => r.lap >= 1);
+      if (this.elimT <= 0 && opened && active.length > 2) { this.elimT = this.elimEvery; const last = active.reduce((a, b) => (a.place > b.place ? a : b)); last.out = true; this.events.push({ type: 'eliminated', id: last.id, player: last.isPlayer, x: last.x, y: last.y, z: last.z, left: active.length - 1 }); }
+      else if (this.elimT <= 0) this.elimT = opened ? this.elimEvery : 1;
       if (P.out) done = false; else if (this.racers.filter((r) => !r.out).length === 1 || P.finished) done = true;
     } else if (f === 'pursuit') {
       const tgt = this.racers[0];
@@ -302,16 +382,36 @@ export class RaceSim {
     const target = Math.min(r.veh.top * 1.3 * (0.84 + 0.16 * sk) * r.pace, Math.min(vmax * (0.84 + 0.16 * sk) * r.pace, Math.sqrt((27 * r.veh.handling) / maxC) * 0.98));
     const c = t.curv[look]; let d = -Math.sign(c) * Math.min(1, Math.abs(c) * 45) * (hw - 2) * 0.7 * sk;
     d += Math.sin(r.id * 2.4 + r.progress * 0.004) * 1.4;
-    for (const h of this.hazards) { let k = h.idx - r.idx; if (t.closed && k < -t.n / 2) k += t.n; if (k > 0 && k * t.step < 30 + r.speed * 0.5 && Math.abs(h.d - d) < 2.6 && sk > 0.15) d = h.d + (h.d > 0 ? -1 : 1) * (3 + 0.5 * sk); }
+    for (const h of this.hazards) {
+      let k = h.idx - r.idx; if (t.closed && k < -t.n / 2) k += t.n;
+      const gap = k * t.step; if (k <= 0 || gap > 30 + r.speed * 0.5 || sk <= 0.15) continue;
+      // a sweeper is somewhere else by the time the rider gets there, so the line is planned against where it will
+      // be, not where it is. Steering at its current position is why sweeper tiers used to be unsurvivable.
+      const tta = gap / Math.max(8, r.speed);
+      const hd = h.amp ? Math.sin((this.time + tta) * h.w + h.phase) * h.amp : h.d;
+      if (Math.abs(hd - d) > 2.6) continue;
+      const hw2 = t.width / 2 - 1.6, clear = 3 + 0.5 * sk;
+      d = hd + clear <= hw2 && (hd - clear < -hw2 || hd > 0) ? hd + clear : hd - clear;
+      d = clamp(d, -hw2, hw2);
+    }
     for (const o of this.racers) if (o !== r && !o.out && o.downT <= 0) { const dp = (o.progress - r.progress) * t.step; if (dp > 0 && dp < 12 && Math.abs(o.d - d) < 1.9 && o.speed < r.speed + 2) d = o.d + (o.d > 0 ? -2.3 : 2.3); }
     if (this.lightwalls) {
       // a rider steers round a wall it has noticed; whether it notices depends on its skill, decided once per wall
-      const fx = Math.sin(r.h), fz = Math.cos(r.h), reach = 9 + r.speed * 0.7;
+      const fx = Math.sin(r.h), fz = Math.cos(r.h), reach = 14 + r.speed * 1.1;
       for (const w of this.walls) {
         if (w.owner === r.id) continue; const mx = (w.x0 + w.x1) / 2 - r.x, mz = (w.z0 + w.z1) / 2 - r.z, ahead = mx * fx + mz * fz;
-        if (ahead < 0 || ahead > reach || Math.abs(mx * fz - mz * fx) > 2.6) continue;
+        // a barrier laid across the lane can be much wider than a rider's own trail, so the whole span is measured
+        // and the line goes round the nearer end of it, not a fixed distance from its middle
+        if (ahead < 0 || ahead > reach) continue;
+        const wi = wrapIdx(t, r.idx + Math.round(ahead / t.step));
+        const la = lateral(t, wi, w.x0, w.z0), lb = lateral(t, wi, w.x1, w.z1), lo = Math.min(la, lb), hi = Math.max(la, lb);
+        if (d > hi + 2.4 || d < lo - 2.4) continue;                                  // the current line already clears it
         if (((w.owner * 7 + r.id * 13 + Math.floor(w.until)) % 10) / 10 > 0.45 + 0.5 * sk) continue;
-        const wd = lateral(t, wrapIdx(t, r.idx + Math.round(ahead / t.step)), (w.x0 + w.x1) / 2, (w.z0 + w.z1) / 2); d = wd + (wd > 0 ? -3.6 : 3.6); break;
+        const hwl = t.width / 2 - 1.6, left = lo - 2.4, right = hi + 2.4;
+        // take whichever side is on the road; if both are, take the one nearer the line being driven
+        const leftOk = left >= -hwl, rightOk = right <= hwl;
+        d = leftOk && rightOk ? (Math.abs(left - d) < Math.abs(right - d) ? left : right) : leftOk ? left : rightOk ? right : d;
+        break;
       }
     }
     d = clamp(d, -(hw - 1.6), hw - 1.6);

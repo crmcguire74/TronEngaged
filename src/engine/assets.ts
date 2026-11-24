@@ -8,8 +8,9 @@ export const ASSET_PATHS: Record<string, string> = {
   'char:azure': 'characters/player/runner-azure.glb', 'char:cobalt': 'characters/player/runner-cobalt.glb', 'char:ivory': 'characters/enemies/runner-ivory.glb', 'char:crimson': 'characters/bosses/runner-crimson.glb',
   'cycle:azure': 'vehicles/player/cycle-azure.glb', 'cycle:violet': 'vehicles/player/cycle-violet.glb', 'cycle:jade': 'vehicles/enemies/cycle-jade.glb', 'cycle:ember': 'vehicles/enemies/cycle-ember.glb',
   'cycle:wraith': 'vehicles/enemies/cycle-wraith.glb', 'cycle:bulwark': 'vehicles/enemies/cycle-bulwark.glb',
-  cockpit: 'vehicles/player/cockpit.glb', cockpit2: 'vehicles/player/cockpit-v2.glb', cockpit3: 'vehicles/player/cockpit-v3.glb', console: 'vehicles/player/cockpit-console.glb', stand: 'environments/cycle-arenas/stand.glb', pylon: 'environments/cycle-arenas/pylon.glb', craft: 'vehicles/air/patrol-craft.glb', drone: 'vehicles/air/drone.glb', carrier: 'vehicles/air/carrier.glb',
-  'disc:azure': 'weapons/discs/disc-azure.glb', 'disc:ivory': 'weapons/discs/disc-ivory.glb', 'disc:crimson': 'weapons/discs/disc-crimson.glb',
+  'cycle:argon': 'vehicles/enemies/cycle-argon.glb', 'cycle:moto': 'vehicles/enemies/cycle-moto.glb',
+  cockpit: 'vehicles/player/cockpit.glb', cockpit2: 'vehicles/player/cockpit-v2.glb', cockpit3: 'vehicles/player/cockpit-v3.glb', cockpit4: 'vehicles/player/cockpit-v4.glb', console: 'vehicles/player/cockpit-console.glb', stand: 'environments/cycle-arenas/stand.glb', pylon: 'environments/cycle-arenas/pylon.glb', craft: 'vehicles/air/patrol-craft.glb', drone: 'vehicles/air/drone.glb', carrier: 'vehicles/air/carrier.glb', hauler: 'vehicles/air/hauler.glb', jet: 'vehicles/air/light-jet.glb',
+  'disc:azure': 'weapons/discs/disc-azure.glb', 'disc:ivory': 'weapons/discs/disc-ivory.glb', 'disc:crimson': 'weapons/discs/disc-crimson.glb', 'disc:identity': 'weapons/discs/disc-identity.glb', sword: 'weapons/melee/arc-sword.glb',
   hands: 'characters/player/glove-hands.glb', pedestal: 'environments/disc-arenas/pedestal.glb', coliseum: 'environments/disc-arenas/coliseum.glb', city: 'environments/cycle-arenas/city.glb',
 };
 export const PANORAMA = 'panoramas/disc-arena/arena-360.jpg';

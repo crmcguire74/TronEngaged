@@ -32,7 +32,7 @@ export function revealMaterials(root: THREE.Object3D, uni: { value: number }, gl
 }
 
 interface FighterView { travel?: boolean; id: number; inst: Instance; root: THREE.Group; reveal: { value: number }; marker: THREE.Sprite | null; markerCtx: CanvasRenderingContext2D | null; markerTex: THREE.CanvasTexture | null; hpShown: number; shield: THREE.Mesh; tell: THREE.Mesh; tellT: number; tellDur: number; throwT: number; hitT: number; props: { hand?: THREE.Object3D; back?: THREE.Object3D; shield?: THREE.Object3D }; ring: THREE.Mesh; height: number; late: boolean; hold: number; greeted: boolean; yaw?: number; dead?: boolean; deathT: number; deathDur?: number; burst?: boolean; baseY?: number; hx?: number; hz?: number; popT?: number; scrub?: boolean; run?: boolean; lean?: number }
-interface DiscView { id: number; root: THREE.Group; model: THREE.Object3D; ribbon: Ribbon; rise: Ribbon | null; glow: THREE.Mesh; rim: THREE.MeshBasicMaterial | null; mark: THREE.Sprite | null; color: number; hostile: boolean; shown: number }
+interface DiscView { id: number; root: THREE.Group; model: THREE.Object3D; /** alternate bodies for re-armed rivals */ lance: THREE.Object3D | null; arc: THREE.Object3D | null; ribbon: Ribbon; rise: Ribbon | null; glow: THREE.Mesh; rim: THREE.MeshBasicMaterial | null; mark: THREE.Sprite | null; color: number; hostile: boolean; shown: number }
 /** Rival discs are always this colour, whatever the rival's own colour: red means "this one can hurt you". */
 const HOSTILE = 0xff4018, HOMING = 0xff2bd0, AMP = 0xffc23a;
 let reticleTex: THREE.CanvasTexture | null = null;
@@ -61,7 +61,7 @@ export class DiscSession extends BaseSession {
   private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3();
   private hopFade = false; private offset = new THREE.Vector3(); private recentred = false; private vrDisc: THREE.Object3D | null = null; private introDone = false; private bossName = ''; private totalEnemies: number; private interfere = false; private lastHp: number; private early: boolean; private threw = false; private shielded = false; private drawT = 9; private called = false; private eye = new THREE.Vector3(); private arrows: THREE.Mesh[] = []; private slowT = 0; private slowDur = 1; private slowMin = 1; private tickAt = 0;
 
-  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'pedestal', 'coliseum', 'drone']; }
+  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'disc:identity', 'sword', 'pedestal', 'coliseum', 'drone']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, seedSalt = 0) {
     super(ctx, tier, diff);
@@ -168,11 +168,32 @@ export class DiscSession extends BaseSession {
     // yours keeps the supplied model and a cool blue trail; a rival's is a red serrated ring with a cross-shaped trail and a bracket that faces you
     let model: THREE.Object3D, rim: THREE.MeshBasicMaterial | null = null, mark: THREE.Sprite | null = null, rise: Ribbon | null = null;
     if (hostile) { const h = hostileDisc(); model = h.group; rim = h.rim; mark = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticle(), color: HOSTILE, transparent: true, opacity: 0, depthWrite: false })); mark.renderOrder = 40; root.add(mark); rise = new Ribbon(color, 18, 0.5, true, 0.25); }
-    else { model = this.ctx.assets.instance('disc:' + d.kind).root; model.scale.setScalar(1.7); }
+    else {
+      // the player throws whichever disc is equipped; rivals keep their own kind
+      const key = 'disc:' + (f.isPlayer ? this.ctx.settings.disc || d.kind : d.kind);
+      model = this.ctx.assets.instance(this.ctx.assets.has(key) ? key : 'disc:' + d.kind).root; model.scale.setScalar(1.7);
+    }
     root.add(model);
+    // Rivals can re-arm mid-fight, so each projectile carries all three bodies and shows whichever is in flight: the
+    // ring, a slim lance bolt, or the arc blade. Swapping visibility costs nothing next to rebuilding the node.
+    let lance: THREE.Object3D | null = null, arc: THREE.Object3D | null = null;
+    if (hostile) {
+      const lg = new THREE.Group();
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.02, 1.5, 8), new THREE.MeshBasicMaterial({ color: 0xcfe9ff }));
+      shaft.rotation.x = Math.PI / 2; lg.add(shaft);
+      const halo = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.03, 1.1, 8, 1, true), new THREE.MeshBasicMaterial({ color: HOSTILE, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      halo.rotation.x = Math.PI / 2; halo.position.z = -0.2; lg.add(halo);
+      lance = lg; lg.visible = false; root.add(lg);
+      if (this.ctx.assets.has('sword')) {
+        const sw = this.ctx.assets.instance('sword', { cloneMaterials: true }).root;
+        // the blade file is four units long down +X: lay it across the flight path and bring it to about a metre
+        sw.scale.setScalar(0.26); sw.rotation.set(0, 0, Math.PI / 2); sw.position.set(0, 0, 0);
+        tuneEmissive(sw, 2.2); arc = new THREE.Group(); arc.add(sw); arc.visible = false; root.add(arc);
+      }
+    }
     const glow = new THREE.Mesh(new THREE.RingGeometry(hostile ? 0.4 : 0.22, hostile ? 0.52 : 0.34, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: hostile ? 0.4 : 0.55, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })); glow.rotation.x = -Math.PI / 2; root.add(glow);
     const ribbon = new Ribbon(color, 26, hostile ? 0.46 : 0.3, false, 0.3); this.world.add(root, ribbon.mesh); if (rise) this.world.add(rise.mesh); root.visible = false; ribbon.mesh.visible = false; if (rise) rise.mesh.visible = false;
-    this.dv.set(id, { id, root, model, ribbon, rise, glow, rim, mark, color, hostile, shown: 0 });
+    this.dv.set(id, { id, root, model, lance, arc, ribbon, rise, glow, rim, mark, color, hostile, shown: 0 });
   }
   /**
    * In a headset there is no screen edge to put a warning on, so a disc bearing down from outside your view gets a red
@@ -305,7 +326,7 @@ export class DiscSession extends BaseSession {
       case 'spawn': if (f && !this.fv.has(f.id)) { this.addFighter(f); const nv = this.fv.get(f.id)!; nv.late = true; nv.reveal.value = f.y - 0.2; audio.sfx('spawn', pos); if (e.summoned) this.totalEnemies++; } break;
       case 'ready': if (mine) { this.threw = true; audio.sfx('ready'); xr.pulse(xr.dominant, 0.2, 30); } break;
       case 'tell': if (v) { v.tell.visible = true; v.tellT = 0; v.tellDur = e.dur; (v.tell.material as THREE.MeshBasicMaterial).color.setHex(e.homing ? HOMING : HOSTILE); audio.sfx(e.homing ? 'tellHoming' : 'tell', pos, e.dur / 0.6); } break;
-      case 'throw': { if (v) { v.throwT = 0.45; v.tell.visible = false; } audio.sfx('throw', pos); if (mine) { xr.pulse(xr.dominant, 0.7, 60); input.rumble(0.3, 0.6, 80); this.drawT = 0; } const dvv = this.dv.get(e.disc); if (dvv) { dvv.ribbon.reset(e.x, e.y, e.z); dvv.rise?.reset(e.x, e.y, e.z); const hc = e.homing ? HOMING : dvv.color; dvv.ribbon.setColor(hc); dvv.rise?.setColor(hc); } break; }
+      case 'throw': { if (v) { v.throwT = 0.45; v.tell.visible = false; } audio.sfx(e.weapon === 'lance' ? 'lanceFire' : e.weapon === 'arc' ? 'arcBlade' : 'throw', pos); if (e.weapon && e.weapon !== 'disc') audio.sfx('throw', pos, 0.5); if (mine) { xr.pulse(xr.dominant, 0.7, 60); input.rumble(0.3, 0.6, 80); this.drawT = 0; } const dvv = this.dv.get(e.disc); if (dvv) { dvv.ribbon.reset(e.x, e.y, e.z); dvv.rise?.reset(e.x, e.y, e.z); const hc = e.homing ? HOMING : dvv.color; dvv.ribbon.setColor(hc); dvv.rise?.setColor(hc); } break; }
       case 'bounce': audio.sfx('ricochet', e, e.kind === 'barrier' ? 1.3 : e.kind === 'platform' ? 0.8 : 1); vfx.sparks(e.x, e.y, e.z, this.dv.get(e.disc)?.color ?? ION, 18, 8, 0.4, e); vfx.ring(e.x + e.nx * 0.05, e.y + e.ny * 0.05, e.z + e.nz * 0.05, this.th.accent, 0.2, 2.2, 0.4, e); for (const m of this.wallMats) m.uniforms.uFlash.value = Math.max(m.uniforms.uFlash.value, e.kind === 'wall' ? 0.05 : 0); break;
       case 'catch': if (mine) { audio.sfx('catch'); xr.pulse(xr.dominant, 0.5, 50); input.rumble(0.2, 0.4, 60); } break;
       case 'recall': if (mine) audio.sfx('recall'); break;
@@ -339,7 +360,13 @@ export class DiscSession extends BaseSession {
       case 'command': if (f) { vfx.ring(f.x, f.y + 0.2, f.z, 0xffb62e, 0.5, 12, 0.8); audio.sfx('warn', pos); hud.toast('VOLLEY CALLED', 'danger'); } break;
       case 'disruptTell': if (f) { vfx.ring(f.x, f.y + 1.2, f.z, 0xb77bff, 0.3, 5, 1.1); audio.sfx('warn', pos); } break;
       case 'interference': this.interfere = e.on; if (e.on) { audio.sfx('interfere'); hud.toast('PLATFORM TRANSFER JAMMED', 'danger'); } else hud.toast('Transfer restored', 'good'); break;
-      case 'platformWarn': audio.sfx('warn', this.platPos(e.index)); if (this.sim.platforms[e.index].side === 0) hud.toast('PLATFORM UNSTABLE — MOVE', 'danger'); break;
+      case 'platformWarn': audio.sfx('warn', this.platPos(e.index)); if (this.sim.platforms[e.index].side === 0) hud.toast(e.breaking ? 'DECK FAILING — HOP OFF' : 'PLATFORM UNSTABLE — MOVE', 'danger'); break;
+      // breakable decks: every hit chips the deck, and the last one takes it out of the fight for good
+      case 'deckHit': { vfx.sparks(e.x, e.y + 0.1, e.z, 0xffd9a0, 10, 5, 0.3); audio.sfx('scrape', e); audio.sfx('deckCrack', e); if (e.left <= 1 && this.sim.platforms[e.index].side === 0) hud.toast('DECK CRACKING', 'warn'); break; }
+      case 'platformBreak': { const p = this.sim.platforms[e.index]; vfx.shatter(e.x, e.y, e.z, 0x9ad8ff, 90, p.r * 0.5); vfx.ring(e.x, e.y, e.z, 0x9ad8ff, 0.5, p.r * 2, 0.6); audio.sfx('shatter', e); audio.sfx('platformDown', e); audio.sfx('deckBreak', e); engine.addShake(0.5); if (p.side === 0) { hud.toast('DECK DESTROYED', 'danger'); audio.say('Deck destroyed.'); } else { hud.toast('ENEMY DECK DESTROYED', 'score'); audio.say('Their footing is gone.'); } break; }
+      // a rival re-arming: the weapon change is announced so the counter-play can change with it
+      case 'rearm': { vfx.ring(e.x, e.y + 1, e.z, e.tint, 0.5, 4.5, 0.6); vfx.flash(e.x, e.y + 1.2, e.z, e.tint, 18); audio.sfx('power', e); audio.sfx('rearm', e); hud.toast(`${String(e.name).toUpperCase()} — ${e.weapon === 'lance' ? 'UNBLOCKABLE BOLTS' : e.weapon === 'arc' ? 'DECK-BREAKING BLADES' : 'RE-ARMED'}`, 'danger'); audio.say(e.weapon === 'lance' ? 'Lance array online.' : e.weapon === 'arc' ? 'Arc blades online.' : 'Opponent re-armed.'); break; }
+      case 'pierce': { vfx.sparks(e.x, e.y, e.z, 0x9fd8ff, 22, 9, 0.35); audio.sfx('hit', e); audio.sfx('lanceImpact', e); if (e.id === 0) { hud.flash('hurt'); hud.toast('LANCE PIERCED YOUR SHIELD — DODGE IT', 'danger'); engine.addShake(0.4); } break; }
       case 'platformDown': audio.sfx('platformDown', this.platPos(e.index)); break;
       case 'platformUp': audio.sfx('platformUp', this.platPos(e.index)); break;
       case 'surgeWarn': audio.sfx('warn', this.platPos(e.index)); if (P.platform === e.index) hud.toast('SURGE — JUMP', 'danger'); break;
@@ -431,6 +458,8 @@ export class DiscSession extends BaseSession {
     for (const d of sim.discs) {
       const v = this.dv.get(d.id); if (!v) continue; const fly = d.state !== 'held';
       v.root.visible = fly; v.ribbon.mesh.visible = fly; if (v.rise) v.rise.mesh.visible = fly; if (!fly) { v.shown = 0; continue; }
+      // show the body that matches what was actually thrown
+      if (v.lance || v.arc) { const w = d.weapon ?? 'disc'; v.model.visible = w === 'disc'; if (v.lance) v.lance.visible = w === 'lance'; if (v.arc) v.arc.visible = w === 'arc'; }
       const x = lerp(d.px, d.x, alpha), y = lerp(d.py, d.y, alpha), z = lerp(d.pz, d.z, alpha);
       v.root.position.set(x, y, z); v.model.rotation.y = t * (v.hostile ? 22 : 30); v.ribbon.push(x, y, z); v.rise?.push(x, y, z);
       const homing = d.homing > 0 && d.age < 1.7, gm = v.glow.material as THREE.MeshBasicMaterial;

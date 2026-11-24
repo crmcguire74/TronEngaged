@@ -13,6 +13,7 @@ export const THEMES: Record<string, Theme> = {
   'fractured-lattice': T('Fractured Lattice', 0x05030a, 0x24103a, 0xb57bff, 0xffd166, 0x07040d, 0.008, 0.35),
   'corruption-zone': T('Corruption Zone', 0x090203, 0x3a0d0d, 0xff4d3d, 0xffc04d, 0x0c0303, 0.01, 0.3),
   'grand-colosseum': T('Grand Colosseum', 0x040407, 0x2a2416, 0xffe3a6, 0x4fe3ff, 0x060608, 0.005, 0.8),
+  'null-sector': T('Null Sector', 0x010203, 0x0b1c2e, 0x7fe9ff, 0xff6a1f, 0x010305, 0.0075, 0.45),
   'classic-grid': T('Classic Grid', 0x010308, 0x07182c, 0x4fe3ff, 0xff8a3c, 0x02050b, 0.0035, 0),
   'neon-circuit': T('Neon Circuit', 0x020209, 0x1a0f3a, 0x7c9cff, 0xff5fd2, 0x04030d, 0.0028, 0),
   skyway: T('Skyway', 0x02040c, 0x12305a, 0x7fe9ff, 0xffd166, 0x050a16, 0.0022, 0),
@@ -23,6 +24,7 @@ export const THEMES: Record<string, Theme> = {
   'red-sector': T('Red Sector', 0x070102, 0x400a10, 0xff3b4e, 0xffd9a0, 0x0c0204, 0.0034, 0),
   'fractured-grid': T('Fractured Grid', 0x040209, 0x211040, 0xb57bff, 0x5affc8, 0x06030c, 0.0036, 0),
   'infinite-grid': T('Infinite Grid', 0x000205, 0x04121e, 0xdff6ff, 0x4fe3ff, 0x01040a, 0.002, 0),
+  'outlands': T('The Outlands', 0x030206, 0x1d0a24, 0xff6a1f, 0x5af0ff, 0x05030a, 0.004, 0),
 };
 export const theme = (id: string) => THEMES[id] ?? THEMES['classic-grid'];
 
@@ -207,3 +209,39 @@ export class Crowd {
 
 /** Updates time uniforms on every shader material in a tree. */
 export function tickUniforms(root: THREE.Object3D, t: number) { root.traverse((o: any) => { const u = o.material?.uniforms; if (u?.uTime) u.uTime.value = t; }); }
+
+/**
+ * Reflection environment for every gloss-black and chrome surface in the game.
+ *
+ * three's stock RoomEnvironment is a white photographic studio: on a lacquered black cockpit it reads as grey plastic
+ * with a milky sheen, which is the single thing that makes an otherwise good model look cheap. This builds a night
+ * grid instead — a near-black room, a dim horizon band, and a handful of long neon strips at raking angles. Those
+ * strips are what a clear-coat actually shows: hard, thin, coloured streaks that slide across the bodywork as the
+ * rider turns, with true black everywhere between them.
+ */
+export function gridEnvironment(): THREE.Scene {
+  const s = new THREE.Scene();
+  const lit = (c: number, i: number) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(i) });
+  const box = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, ry = 0, rz = 0) => {
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.rotation.set(0, ry, rz); s.add(o); return o;
+  };
+  // the room: near-black, lifted a touch toward blue at the floor so undersides are not dead
+  const room = new THREE.Mesh(new THREE.BoxGeometry(22, 12, 22), new THREE.MeshBasicMaterial({ color: 0x03050a, side: THREE.BackSide })); s.add(room);
+  box(22, 0.02, 22, new THREE.MeshBasicMaterial({ color: 0x060a14, side: THREE.DoubleSide }), 0, -5.9, 0);
+  // horizon band: the city glow the machine sits inside
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(10.6, 10.6, 1.5, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x0e2b45, side: THREE.BackSide })); band.position.y = -1.2; s.add(band);
+  // raking neon strips: the streak highlights a clear-coat lives on
+  const ion = lit(0x4fe3ff, 2.4), ionDim = lit(0x2a7fa8, 1.1), ember = lit(0xff6a1f, 1.9), white = lit(0xdff4ff, 2.0);
+  box(17, 0.22, 0.22, ion, 0, 3.4, -7.4, 0, 0.07);
+  box(17, 0.16, 0.16, ion, 0, 1.1, -7.8, 0, -0.05);
+  box(0.18, 0.18, 16, ionDim, -7.6, 2.3, 0, 0, 0);
+  box(0.18, 0.18, 16, ionDim, 7.6, 2.3, 0, 0, 0);
+  box(13, 0.14, 0.14, ember, 2.2, -0.6, 7.6, 0, 0.1);
+  box(9, 0.1, 0.1, ember, -3.4, 2.9, 7.2, 0, -0.12);
+  // overhead key: a long soft panel that gives the top surfaces one clean falloff
+  box(7.5, 0.05, 2.2, white, 0, 5.4, -0.6);
+  box(3.2, 0.05, 1.2, lit(0x9fd8ff, 1.2), -3.6, 5.2, 3.4);
+  // a few floor strips so reflections carry under the machine too
+  for (let i = -2; i <= 2; i++) box(15, 0.04, 0.12, ionDim, 0, -5.8, i * 3.1);
+  return s;
+}

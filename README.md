@@ -1,15 +1,19 @@
-# VANTA ARC — Lattice Protocol
+# TRON ENGAGED
 
-Two arcade games in one browser build, playable on desktop and in VR (WebXR):
+A modern 3D Tron experience: web, VR, immersive gaming. Two arcade games in one browser build, playable on desktop
+and in VR (WebXR):
 
-- **Disc Arena** — third-person disc duels on suspended platforms: ricochets, shield/parry, platform hops, bosses.
-- **Arc Cycles — Combat** — classic 90° turns and permanent hardlight walls.
-- **Arc Cycles — Racing** — fluid steering, drifting, boost, checkpoints; six race formats.
+- **Disc Arena** — third-person disc duels on suspended platforms: ricochets, shield/parry, platform hops, breakable
+  decks, rivals that re-arm through three weapons, bosses.
+- **Light Cycles — Combat** — classic 90° turns and permanent hardlight walls.
+- **Light Cycles — Racing** — fluid steering, drifting, boost and checkpoints over hills, through bores, across
+  suspension spans and down tower canyons; seven race formats and an air interceptor.
 
-30 authored tiers per game (60 total), endless seeded modes, four difficulties, local save.
+36 authored tiers per game (72 total), endless seeded modes, four difficulties, local save.
 
-> Built from `TronPRD.pdf`. Per that document's own IP note, the game ships under an original name, universe and
-> terminology; the supplied models in `assets/` are used as the hero art.
+> Built from `TronPRD.pdf`. This is a personal, non-commercial fan build: it uses the Tron name and the supplied Tron
+> models as its hero art. Third-party models and audio, and the licence each one carries, are listed in `CREDITS.md`;
+> anything whose licence does not allow redistribution in a build is held in `assets/` and never shipped.
 
 ## Run
 
@@ -58,8 +62,11 @@ In VR:
 - Cycles are ridden from the cockpit, with the rider's gloves on the bars and an overhead map hanging to the left. B on
   the right hand switches between cockpit and chase view; right stick up / down trims the seat height (remembered).
 - In every race against other riders, X lays a light wall behind you for about two seconds. Rivals that ride into your
-  wall are destroyed; riding into one of theirs stalls you. From the eighth tier, hitting a rival at super speed shoves
-  it sideways, and a rival shoved into a rail is thrown off the road.
+  wall are destroyed; riding into one of theirs stalls you. From the fourth tier, machines trade real momentum on
+  contact: a side-on hit from the faster rider shoves the slower one bodily across the road, and a rival shoved into a
+  rail is thrown off it.
+- From tier 32 an **air interceptor** shadows whoever is leading and drops a hardlight barrier across part of the lane
+  ahead of it. There is always a way past; the HUD says which side.
 - In Disc Arena, look at another platform (it lights up) and press A to hop to it.
 - A is a timed surge of super speed, drawn from the boost reserve. Thumbstick clicks are not used for anything.
 - The menu opens only when left Y is held for 0.4 s, so a brushed button never interrupts a run. It gives **Quit to
@@ -76,11 +83,18 @@ These models are built by Blender scripts (shared helpers in `scripts/blender/ki
 
 | Script | Output in `assets/generated/` |
 |---|---|
-| `build_cockpit.py` | `cockpit.glb` — first-person / VR cockpit |
+| `build_cockpit_v4.py` | `cockpit-v4.glb` — the cockpit the game uses: a wrap-around binnacle swept on an arc about the rider, a four-layer instrument stack, raked A-pillars, hex vents, a floor pan with pedal plates, and a yoke on one swept crossbar |
+| `build_cockpit.py`, `build_cockpit_v2.py`, `build_cockpit_v3.py` | earlier cockpits, kept as fallbacks |
+| `build_hauler.py` | `hauler.glb` — the Overwatch Hauler that stands over the Outlands events |
 | `build_arena_kit.py` | `arena-stand.glb`, `arena-pylon.glb` — the stadium around the cycle grid |
 | `build_cycles.py` | `cycle-bulwark.glb` — ring-wheel rival cycle (`cycle-lancer.glb` is also built but no longer shipped) |
 
+The scripts run either inside Blender or against the `bpy` module, which is the quicker path in CI:
+
 ```bash
+pip install bpy
+python3 scripts/blender/build_cockpit_v4.py -- assets/generated
+# or
 /Applications/Blender.app/Contents/MacOS/Blender -b --python scripts/blender/build_cycles.py -- "$PWD/assets/generated"
 ```
 
@@ -93,6 +107,9 @@ is not scripted either: it was generated from a written description with a text-
 fitted (scale, facing, per-rider light colour) in `src/games/cycles/view.ts`.
 
 Run `npm run assets:sync` afterwards to copy it into `public/game-assets/`.
+
+Voice, effects, ambience and 360° backdrops the build is ready for but does not yet have are listed with their
+generation prompts and durations in `assets/PRODUCTION-BRIEF.md`. Each one drops in by file name with no code change.
 
 The city backdrops are JPEG conversions of four of the supplied panoramic renders (`assets/generated/panoramas/`).
 The sky dome maps each one as a band around the horizon, mirrored across the back half so it wraps without a seam.
@@ -108,7 +125,7 @@ src/
   engine/               renderer + post, assets, audio synth, VFX, environments, WebXR
   input/                keyboard / mouse / gamepad → normalised actions
   games/discs/          arena builder, simulation, AI, archetypes, view
-  games/cycles/         combat sim + AI, track generator, race sim, views
+  games/cycles/         combat sim + AI, track generator (terrain, banking, built sections), scenery, race sim, views
   progression/          tier data, sim builders, endless director, scoring, unlocks
   persistence/          IndexedDB save with localStorage mirror
   scenes/               splash cinematic, menu backdrop

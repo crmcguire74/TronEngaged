@@ -7,7 +7,7 @@ export interface Settings {
   sensitivity: number; invertY: boolean; deadzone: number; padSensitivity: number; aimAssist: boolean; steerAssist: boolean; autoRecall: boolean;
   bindings: Record<string, string>;
   vr: { snapTurn: boolean; snapAngle: number; seated: boolean; vignette: number; throwMode: 'aim' | 'gesture'; moveSpeed: number; height: number; leftHanded: boolean; /** cockpit seat trim in metres, set with the right stick while riding */ seat: number; /** where the overhead map sits on a cycle */ map: 'left' | 'right' | 'far-left' | 'far-right' | 'top' | 'off'; cycleView: 'auto' | 'cockpit' | 'chase' };
-  difficulty: DifficultyId; cycleCamera: 'chase' | 'cockpit'; skin: string; cycle: string; trail: string;
+  difficulty: DifficultyId; cycleCamera: 'chase' | 'cockpit'; skin: string; cycle: string; trail: string; /** which disc model the player throws */ disc: string;
 }
 export interface TierRecord { best: number; difficulty: DifficultyId; time: number; clears: number; scoring: number }
 export interface SaveData {
@@ -29,7 +29,7 @@ export function defaultSettings(): Settings {
     sensitivity: 1, invertY: false, deadzone: 0.15, padSensitivity: 1, aimAssist: true, steerAssist: false, autoRecall: false,
     bindings: { ...DEFAULT_BINDINGS },
     vr: { snapTurn: true, snapAngle: 30, seated: false, vignette: 0.6, throwMode: 'aim', moveSpeed: 1, height: 0, leftHanded: false, seat: 0, map: 'left', cycleView: 'auto' },
-    difficulty: 'standard', cycleCamera: 'chase', skin: 'azure', cycle: 'azure', trail: 'ion',
+    difficulty: 'standard', cycleCamera: 'chase', skin: 'azure', cycle: 'azure', trail: 'ion', disc: 'azure',
   };
 }
 export function defaultSave(): SaveData {
@@ -44,17 +44,24 @@ export function migrate(raw: any): SaveData {
   s.version = 1; return s;
 }
 
-const DB = 'vanta-arc', STORE = 'save', KEY = 'profile';
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const DB = 'tron-engaged', LEGACY_DB = 'vanta-arc', STORE = 'save', KEY = 'profile';
+function openDb(name = DB): Promise<IDBDatabase> {
+  return new Promise((res, rej) => { const r = indexedDB.open(name, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+/** Reads a profile out of a store, or null if there is none. */
+async function readProfile(db: IDBDatabase): Promise<any> {
+  try { return await new Promise((res, rej) => { const r = db.transaction(STORE).objectStore(STORE).get(KEY); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); } catch { return null; }
 }
 /** Local persistence: IndexedDB with a localStorage mirror as fallback (private windows, blocked storage). */
 export class SaveStore {
   data: SaveData = defaultSave(); private db: IDBDatabase | null = null; private timer: any = 0;
   async load(): Promise<SaveData> {
     let raw: any = null;
-    try { this.db = await openDb(); raw = await new Promise((res, rej) => { const r = this.db!.transaction(STORE).objectStore(STORE).get(KEY); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); } catch { this.db = null; }
+    try { this.db = await openDb(); raw = await readProfile(this.db); } catch { this.db = null; }
     if (!raw) { try { const ls = globalThis.localStorage?.getItem(DB); if (ls) raw = JSON.parse(ls); } catch { /* unavailable */ } }
+    // a profile saved under the project's former name is carried over once, then written back under the new one
+    if (!raw) { try { const old = await openDb(LEGACY_DB); raw = await readProfile(old); old.close(); } catch { /* none */ } }
+    if (!raw) { try { const ls = globalThis.localStorage?.getItem(LEGACY_DB); if (ls) raw = JSON.parse(ls); } catch { /* unavailable */ } }
     this.data = migrate(raw); return this.data;
   }
   /** Debounced write. */

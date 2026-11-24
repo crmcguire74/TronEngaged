@@ -2,7 +2,7 @@ import { Rng, clamp, lerp, segSegDist2, smooth } from '../../engine/math';
 import type { SimEvent } from '../../engine/events';
 import type { EnemySpawn } from '../../progression/types';
 import { DISC_POINTS, discHitScore, type DiscStats } from '../../progression/scoring';
-import { ARCHETYPES, type Archetype } from './archetypes';
+import { ARCHETYPES, type Archetype, type Weapon } from './archetypes';
 import { HOP_GAP, HOP_RISE, wallNormals, type ArenaDef, type BarrierDef, type PlatformDef } from './arena';
 import { aiThink, initAi, type AiState } from './ai';
 
@@ -18,7 +18,12 @@ export interface DiscIntent {
 }
 export const emptyIntent = (): DiscIntent => ({ mx: 0, mz: 0, ax: 0, ay: 0, az: -1, throwHeld: false, shield: false, jump: false, dodge: false, recall: false });
 
-export interface Platform { def: PlatformDef; x: number; y: number; z: number; dx: number; dy: number; dz: number; bx: number; by: number; bz: number; tx: number; ty: number; tz: number; state: 'up' | 'warn' | 'down'; surge: number; surgeArmed: boolean; r: number; side: 0 | 1 }
+export interface Platform {
+  def: PlatformDef; x: number; y: number; z: number; dx: number; dy: number; dz: number; bx: number; by: number; bz: number; tx: number; ty: number; tz: number;
+  state: 'up' | 'warn' | 'down'; surge: number; surgeArmed: boolean; r: number; side: 0 | 1;
+  /** Breakable decks: hits left before the deck fails (0 = indestructible), and whether it has already gone. */
+  integrity: number; gone: boolean; breakT: number;
+}
 export interface Barrier { def: BarrierDef; x: number; y: number; z: number; yaw: number; hp: number; alive: boolean; flash: number }
 export interface Fighter {
   id: number; team: 0 | 1; kind: string; arch: Archetype; isPlayer: boolean;
@@ -35,6 +40,7 @@ export interface Disc {
   id: number; owner: number; team: 0 | 1; kind: string; state: 'held' | 'flying' | 'returning';
   x: number; y: number; z: number; px: number; py: number; pz: number; vx: number; vy: number; vz: number;
   bounces: number; age: number; homing: number; target: number; hit: Set<number>; parried: boolean; /** passed through an amplifier ring this flight */ amped?: boolean;
+  /** What was thrown: a ricocheting disc, an unparryable straight lance, or a heavy arc blade. */ weapon?: Weapon;
 }
 /** Amplifier ring: a gold gate hanging over the gap. A disc thrown through it speeds up and hits harder — for either side. */
 export interface AmpRing { x: number; y: number; z: number; r: number; bx: number; sway: number; phase: number; flash: number }
@@ -42,6 +48,7 @@ export interface DiscSimConfig {
   arena: ArenaDef; seed: number; waves: readonly (readonly EnemySpawn[])[]; modifiers: readonly string[];
   playerHp: number; playerShield: number; playerDiscs: number;
   aiSkill: number; hazardMul: number; maxAttackers: number; discSpeedMul: number;
+  /** Breakable decks: hits a platform survives before it fails. Only read with the 'fragile-platforms' modifier. */ platformHp?: number;
 }
 
 const AMP_SPEED = 1.3, AMP_DAMAGE = 1.6;
@@ -66,7 +73,8 @@ export class DiscSim {
   constructor(cfg: DiscSimConfig) {
     this.cfg = cfg; this.rng = new Rng(cfg.seed);
     this.walls = wallNormals(cfg.arena);
-    for (const def of cfg.arena.platforms) this.platforms.push({ def, x: def.x, y: def.y, z: def.z, dx: 0, dy: 0, dz: 0, bx: def.x, by: def.y, bz: def.z, tx: def.x, ty: def.y, tz: def.z, state: 'up', surge: 0, surgeArmed: false, r: def.r, side: def.side });
+    const deckHp = cfg.modifiers.includes('fragile-platforms') ? Math.max(2, cfg.platformHp ?? 4) : 0;
+    for (const def of cfg.arena.platforms) this.platforms.push({ def, x: def.x, y: def.y, z: def.z, dx: 0, dy: 0, dz: 0, bx: def.x, by: def.y, bz: def.z, tx: def.x, ty: def.y, tz: def.z, state: 'up', surge: 0, surgeArmed: false, r: def.r, side: def.side, integrity: deckHp, gone: false, breakT: 0 });
     for (const def of cfg.arena.barriers) this.addBarrier(def);
     this.collapseOn = cfg.arena.platforms.some((p) => p.collapse) && !cfg.modifiers.includes('collapse-later');
     this.surgeOn = cfg.modifiers.includes('energy-surge');
@@ -141,6 +149,7 @@ export class DiscSim {
       this.stepFighter(f, intent, dt);
     }
     this.stepDiscs(dt);
+    this.stepUpgrades();
     this.checkBoss();
     // waves / end state
     if (this.player.hp <= 0 && this.player.alive) this.eliminate(this.player, 'disc');
@@ -163,6 +172,11 @@ export class DiscSim {
       if (d.move) { const s = Math.sin((this.time / d.move.period + d.move.phase) * Math.PI * 2); mx = d.move.ax * s; my = d.move.ay * s; mz = d.move.az * s; }
       p.x = p.bx + mx; p.y = p.by + my; p.z = p.bz + mz;
       p.dx = p.x - ox; p.dy = p.y - oy; p.dz = p.z - oz;
+      if (p.gone) {
+        // a broken deck warns for a moment, drops, and never comes back
+        if (p.breakT > 0) { p.breakT -= dt; if (p.breakT <= 0 && p.state !== 'down') { p.state = 'down'; this.events.push({ type: 'platformBreak', index: i, x: p.x, y: p.y, z: p.z }); } }
+        continue;
+      }
       if (d.collapse && this.collapseOn) {
         const c = d.collapse, ph = ((this.time / c.interval + c.phase) % 1) * c.interval;
         const warnAt = c.interval - c.down - 1.6, downAt = c.interval - c.down;
@@ -346,11 +360,14 @@ export class DiscSim {
     d.x = f.x + f.ax * 0.75; d.y = clamp(f.y + 1.4 + f.ay * 0.3, a.floor + 0.5, a.ceiling - 0.5); d.z = f.z + f.az * 0.75;
     if (it && it.ox !== undefined) { const rx = it.ox - f.x, ry = it.oy! - (f.y + 1.3), rz = it.oz! - f.z, rl = Math.hypot(rx, ry, rz), k = rl > 1.3 ? 1.3 / rl : 1; d.x = f.x + rx * k; d.y = clamp(f.y + 1.3 + ry * k, a.floor + 0.5, a.ceiling - 0.5); d.z = f.z + rz * k; }
     d.px = d.x; d.py = d.y; d.pz = d.z;
-    d.vx = f.ax * speed; d.vy = f.ay * speed; d.vz = f.az * speed;
-    d.homing = f.arch.homing; d.target = f.isPlayer ? 0 : this.player.id;
+    // weapon tuning: a lance is fast and flat, an arc blade is slow and heavy. The disc is unchanged.
+    const w = (d.weapon = f.arch.weapon ?? 'disc');
+    const vk = w === 'lance' ? 1.55 : w === 'arc' ? 0.62 : 1;
+    d.vx = f.ax * speed * vk; d.vy = f.ay * speed * vk; d.vz = f.az * speed * vk;
+    d.homing = w === 'lance' ? 0 : f.arch.homing; d.target = f.isPlayer ? 0 : this.player.id;
     f.throwCd = 0.22;
     if (f.isPlayer) this.stats.throws++;
-    this.events.push({ type: 'throw', id: f.id, disc: d.id, x: d.x, y: d.y, z: d.z, homing: d.homing > 0, charge });
+    this.events.push({ type: 'throw', id: f.id, disc: d.id, x: d.x, y: d.y, z: d.z, homing: d.homing > 0, charge, weapon: w });
   }
 
   // ---------------------------------------------------------------- discs
@@ -433,13 +450,20 @@ export class DiscSim {
         }
         d.x = hx1; d.y = hy1; d.z = hz1;
         if (tHit >= 1) break;
-        // ricochet: reflect about the surface normal with configurable energy loss
+        // an arc blade cuts a destructible barrier down and carries on through it; everything else ricochets
+        const cut = d.weapon === 'arc' && !!bHit && bHit.def.hp > 0;
         const dot = d.vx * nx + d.vy * ny + d.vz * nz;
-        d.vx = (d.vx - 2 * dot * nx) * (1 - ENERGY_LOSS); d.vy = (d.vy - 2 * dot * ny) * (1 - ENERGY_LOSS); d.vz = (d.vz - 2 * dot * nz) * (1 - ENERGY_LOSS);
-        d.x += nx * 0.01; d.y += ny * 0.01; d.z += nz * 0.01;
-        d.bounces++; remaining *= 1 - tHit;
-        this.events.push({ type: 'bounce', disc: d.id, kind, x: d.x, y: d.y, z: d.z, nx, ny, nz, team: d.team });
-        if (bHit && bHit.def.hp > 0) { bHit.hp--; bHit.flash = 0.25; if (bHit.hp <= 0) this.breakBarrier(bHit, d.team); }
+        if (!cut) {
+          d.vx = (d.vx - 2 * dot * nx) * (1 - ENERGY_LOSS); d.vy = (d.vy - 2 * dot * ny) * (1 - ENERGY_LOSS); d.vz = (d.vz - 2 * dot * nz) * (1 - ENERGY_LOSS);
+          d.x += nx * 0.01; d.y += ny * 0.01; d.z += nz * 0.01;
+        } else { d.x -= nx * 0.01; d.y -= ny * 0.01; d.z -= nz * 0.01; }
+        if (!cut) d.bounces++; remaining *= 1 - tHit;
+        this.events.push({ type: 'bounce', disc: d.id, kind, cut, x: d.x, y: d.y, z: d.z, nx, ny, nz, team: d.team, weapon: d.weapon });
+        // a lance does not ricochet: it spends itself where it lands
+        if (d.weapon === 'lance') { d.state = 'returning'; this.events.push({ type: 'spent', disc: d.id }); }
+        // an arc blade cuts a destructible barrier down in one pass instead of chipping it
+        if (bHit && bHit.def.hp > 0) { bHit.hp -= d.weapon === 'arc' ? bHit.def.hp : 1; bHit.flash = 0.25; if (bHit.hp <= 0) this.breakBarrier(bHit, d.team); }
+        if (kind === 'platform') this.strikeDeck(d);
         if (d.bounces > MAX_BOUNCES) { d.state = 'returning'; this.events.push({ type: 'spent', disc: d.id }); }
       }
       if (d.state === 'flying' && !d.amped) for (const a of this.amps) {
@@ -472,6 +496,14 @@ export class DiscSim {
     const sp = Math.hypot(d.vx, d.vy, d.vz) || 1, dx = d.vx / sp, dz = d.vz / sp;
     if (f.invuln > 0) { d.hit.add(f.id); if (f.dodgeT > 0 || f.dodgeCd > 0.5) this.events.push({ type: 'evade', id: f.id }); return; }
     const frontal = -(dx * f.ax + dz * f.az) > 0.5;
+    // a lance cannot be parried or blocked: the shield turns it aside into a graze, and that is all. Its long wind-up
+    // is the tell, so the answer to it is to move, not to hold the shield up.
+    if (f.shieldUp && frontal && d.weapon === 'lance') {
+      d.hit.add(f.id); f.shield = Math.max(0, f.shield - 18);
+      this.events.push({ type: 'pierce', id: f.id, x: d.x, y: d.y, z: d.z });
+      this.damage(f, Math.round(DISC_DAMAGE * 0.55), dx, dz, 'disc');
+      d.state = 'returning'; return;
+    }
     if (f.shieldUp && frontal) {
       d.hit.clear();
       if (f.shieldT < 0.22) {
@@ -537,6 +569,57 @@ export class DiscSim {
   }
 
   private addScore(points: number, label: string) { this.stats.score += points; this.events.push({ type: 'score', points, label, combo: this.combo }); }
+
+  /**
+   * A disc landing on a breakable deck chips it; an arc blade takes a chunk. A deck is only ever allowed to fail
+   * while its side still has somewhere to stand and every remaining deck on that side is still hoppable, so the
+   * mechanic can take the floor out from under a fight without ever stranding anyone.
+   */
+  private strikeDeck(d: Disc) {
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < this.platforms.length; i++) {
+      const p = this.platforms[i]; if (p.integrity <= 0 || p.gone) continue;
+      const dd = (p.x - d.x) ** 2 + (p.z - d.z) ** 2; if (dd < p.r * p.r && dd < bd) { bd = dd; best = i; }
+    }
+    if (best < 0) return;
+    const p = this.platforms[best];
+    p.integrity -= d.weapon === 'arc' ? 3 : 1;
+    this.events.push({ type: 'deckHit', index: best, left: Math.max(0, p.integrity), x: d.x, y: p.y, z: d.z, team: d.team });
+    if (p.integrity > 0 || !this.canDrop(best)) return;
+    p.gone = true; p.breakT = 1.4; p.state = 'warn';
+    this.events.push({ type: 'platformWarn', index: best, breaking: true });
+  }
+
+  /** True when dropping platform `i` leaves its side with at least two decks that are all still reachable. */
+  private canDrop(i: number): boolean {
+    const side = this.platforms[i].side;
+    const live: number[] = [];
+    for (let k = 0; k < this.platforms.length; k++) { const q = this.platforms[k]; if (k !== i && q.side === side && !q.gone) live.push(k); }
+    if (live.length < 2) return false;
+    const reach = (a: number, b: number) => {
+      const A = this.platforms[a], B = this.platforms[b];
+      return Math.hypot(A.bx - B.bx, A.bz - B.bz) - A.r - B.r <= HOP_GAP && Math.abs(A.by - B.by) <= HOP_RISE;
+    };
+    const seen = new Set([live[0]]); const q = [live[0]];
+    while (q.length) { const a = q.pop()!; for (const b of live) if (!seen.has(b) && reach(a, b)) { seen.add(b); q.push(b); } }
+    return seen.size === live.length;
+  }
+
+  /**
+   * Rivals with an escalation ladder re-arm as the fight wears on: a Vanguard that started throwing discs comes back
+   * with lances, then with arc blades. Each step is announced so the player can see the weapon change coming.
+   */
+  private stepUpgrades() {
+    for (const f of this.fighters) {
+      const ups = f.arch.upgrades; if (!ups || !f.alive || f.isPlayer) continue;
+      const frac = f.hp / f.maxHp;
+      let idx = -1; for (let i = 0; i < ups.length; i++) if (frac <= ups[i].hpAbove) idx = i;
+      if (idx < 0 || idx <= f.phase) continue;
+      f.phase = idx; const u = ups[idx]; const baseArch = ARCHETYPES[f.kind];
+      f.arch = { ...baseArch, ...u.over, upgrades: ups, weapon: u.weapon ?? baseArch.weapon };
+      this.events.push({ type: 'rearm', id: f.id, name: u.name, weapon: f.arch.weapon ?? 'disc', x: f.x, y: f.y, z: f.z, tint: f.arch.tint });
+    }
+  }
 
   // ---------------------------------------------------------------- bosses
   private checkBoss() {

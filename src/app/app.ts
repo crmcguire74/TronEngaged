@@ -64,7 +64,7 @@ export class App {
     document.addEventListener('visibilitychange', () => { if (qa) return; if (document.hidden && this.state === 'play') this.pause(); this.audio.suspend(document.hidden); });
     addEventListener('pagehide', () => void this.store.flush());
     // surface runtime errors where a headset user can see them
-    const report = (m: string) => { console.error('[vanta-arc]', m); this.vr.setMessage('ERROR: ' + m); if (this.xr.presenting) this.hud.subtitle('ERROR: ' + m.slice(0, 60)); };
+    const report = (m: string) => { console.error('[tron-engaged]', m); this.vr.setMessage('ERROR: ' + m); if (this.xr.presenting) this.hud.subtitle('ERROR: ' + m.slice(0, 60)); };
     addEventListener('error', (e) => report(e.message || 'script error')); addEventListener('unhandledrejection', (e) => report(String((e as PromiseRejectionEvent).reason?.message ?? (e as PromiseRejectionEvent).reason)));
   }
 

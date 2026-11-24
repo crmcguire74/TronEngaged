@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { gridEnvironment } from './env';
 import type { Settings } from '../persistence/store';
 
 export const FIXED_DT = 1 / 120;
@@ -27,7 +27,9 @@ export class Engine {
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.xr.enabled = true; r.info.autoReset = false;
     this.scene.background = new THREE.Color(0x020308);
-    const pm = new THREE.PMREMGenerator(r); this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; this.scene.environmentIntensity = 0.55; pm.dispose();
+    // a night-grid reflection probe, not a white studio: see gridEnvironment
+    const pm = new THREE.PMREMGenerator(r); const envScene = gridEnvironment(); this.scene.environment = pm.fromScene(envScene, 0.03).texture; this.scene.environmentIntensity = 1.15; pm.dispose();
+    envScene.traverse((o: any) => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
     this.rig.name = 'rig'; this.rig.add(this.camera); this.scene.add(this.rig, this.world);
     this.fadeMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, side: THREE.DoubleSide, depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
     this.fadeMesh.renderOrder = 10000; this.fadeMesh.frustumCulled = false; this.fadeMesh.visible = false; this.camera.add(this.fadeMesh);

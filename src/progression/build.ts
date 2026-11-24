@@ -28,7 +28,7 @@ export function buildDiscConfig(t: TierDefinition, diff: DifficultyId, seedSalt 
   return {
     arena: buildDiscArena(t, seed), seed, waves: [t.enemies, ...(t.waves ?? [])], modifiers: mods,
     playerHp: Math.round(100 * D.resources), playerShield: Math.round(100 * D.resources * num(t, 'shieldMul', 1)), playerDiscs: num(t, 'playerDiscs', 3),
-    aiSkill: D.aiSkill, hazardMul: D.hazards, maxAttackers: num(t, 'maxAttackers', 1), discSpeedMul: num(t, 'discSpeed', 1),
+    aiSkill: D.aiSkill, hazardMul: D.hazards, maxAttackers: num(t, 'maxAttackers', 1), discSpeedMul: num(t, 'discSpeed', 1), platformHp: num(t, 'platformHp', 4),
   };
 }
 
@@ -44,9 +44,12 @@ export function buildRaceConfig(t: TierDefinition, diff: DifficultyId, playerMod
   const seed = hashSeed('race', num(t, 'seed', t.id), stage, seedSalt);
   const track = buildTrack({ seed, closed: !sprint, radius: num(t, 'radius', 190) * (1 + stage * 0.06), wobble: num(t, 'wobble', 0.3), elevation: num(t, 'elevation'), width: num(t, 'width', 16), knots: num(t, 'knots', 9) + stage, length: num(t, 'length', 1600),
     // every circuit gets a distinct plan: two to four inward bends, cut deeper on later tiers
-    lobes: num(t, 'lobes', 2 + ((t.id + stage) % 3)), depth: num(t, 'depth', 0.3 + Math.min(0.12, t.id * 0.006)), stretch: num(t, 'stretch', 1 + ((t.id * 7 + stage * 3) % 5) * 0.14) });
-  const e = t.enemies[0]; const rivals = []; const others = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'azure'].filter((m) => m !== playerModel);
+    lobes: num(t, 'lobes', 2 + ((t.id + stage) % 3)), depth: num(t, 'depth', 0.3 + Math.min(0.12, t.id * 0.006)), stretch: num(t, 'stretch', 1 + ((t.id * 7 + stage * 3) % 5) * 0.14),
+    // terrain and built sections: rolling crests, banked corners, and tunnels / bridges / city canyons round the lap
+    hills: num(t, 'hills'), hillCount: num(t, 'hillCount', 3) + (stage % 2), bank: num(t, 'bank'),
+    tunnels: num(t, 'tunnels'), bridges: num(t, 'bridges'), canyons: num(t, 'canyons') });
+  const e = t.enemies[0]; const rivals = []; const others = ['ember', 'argon', 'wraith', 'moto', 'jade', 'bulwark', 'violet', 'azure'].filter((m) => m !== playerModel);
   for (let i = 0; i < (e?.count ?? 0); i++) rivals.push({ skill: (e.difficulty) * (1 - 0.06 * ((i * 7) % 4)), model: others[i % others.length] });
-  // from the eighth tier on, riders can be rammed off the road
-  return { track, seed, laps: num(t, 'laps', 2), format, rivals, modifiers: t.id >= 8 ? [...t.modifiers, 'ramming'] : t.modifiers, aiSkill: D.aiSkill, hazardMul: D.hazards, resources: D.resources, passPlace: num(t, 'passPlace', 3), playerModel, hazards: num(t, 'hazards'), pads: num(t, 'pads', 3) };
+  // from the fourth tier on, riders can be rammed off the road
+  return { track, seed, laps: num(t, 'laps', 2), format, rivals, modifiers: t.id >= 4 ? [...t.modifiers, 'ramming'] : t.modifiers, aiSkill: D.aiSkill, hazardMul: D.hazards, resources: D.resources, passPlace: num(t, 'passPlace', 3), playerModel, hazards: num(t, 'hazards'), pads: num(t, 'pads', 3) };
 }

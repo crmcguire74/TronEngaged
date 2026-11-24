@@ -9,20 +9,47 @@ import { cosmetic } from '../../progression/rewards';
 import { GloveHand } from '../../engine/hands';
 import { HoloGauge, holoFrame } from './holo';
 
-export const CYCLE_COLORS: Record<string, number> = { azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0 };
+export const CYCLE_COLORS: Record<string, number> = { azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0, argon: 0x5affd8, moto: 0xff8a3c };
 /** Every rival model, in the order riders are assigned them. */
-export const RIVAL_MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet'];
+export const RIVAL_MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'argon', 'moto'];
 export const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 export const playerTrail = (ctx: Ctx) => cosmetic('trail:' + ctx.settings.trail)?.color ?? 0x4fe3ff;
-/** Generated models arrive at their own scale and facing: uniform scale, lift so the tyres sit on the floor, half-turn. */
-const FIT: Record<string, { s: number; y: number; turn: number }> = { wraith: { s: 2.9, y: 0.196, turn: Math.PI } };
+/**
+ * Supplied models arrive at their own scale, facing and origin. `s` is a uniform scale, `y` lifts the model so the
+ * tyres sit on the floor (applied before the scale), `turn` faces it down +Z, and `x` / `z` recentre a model whose
+ * origin is not under the machine. Everything is measured from the file's bounding box.
+ */
+const FIT: Record<string, { s: number; y: number; turn: number; x?: number; z?: number }> = {
+  wraith: { s: 2.9, y: 0.196, turn: Math.PI },
+  // TRON: Uprising ArgonCity cycle: already in metres and already nose-down -Z, so only a half-turn is needed
+  argon: { s: 1.06, y: 0, turn: Math.PI },
+  // Moto de Tron: eleven metres long down +X, origin off to one side and a metre above the floor
+  moto: { s: 0.225, y: -1.21, turn: Math.PI / 2, x: 2.91, z: -3.0 },
+};
 /** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
-const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt' };
-export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'cockpit2', 'cockpit3', 'console', 'hands']).filter(Boolean))];
+const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson' };
+export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'cockpit2', 'cockpit3', 'cockpit4', 'console', 'hands']).filter(Boolean))];
 /** Rider eye point relative to the cycle origin (metres): x right-handed, y up, z forward. */
 export const EYE = { y: 1.27, z: -0.2 };
+/**
+ * Where each cockpit model puts the inboard and outboard end of a grip, in cockpit space (glTF: x right, y up,
+ * z forward). The gloved hands and forearms are placed from these, so a new cockpit only needs a row here.
+ */
+const GRIPS: Record<string, { a: [number, number, number]; b: [number, number, number]; elbow: [number, number, number] }> = {
+  cockpit2: { a: [0.3, 0.99, 0.42], b: [0.39, 0.985, 0.36], elbow: [0.27, 0.9, -0.08] },
+  cockpit3: { a: [0.3, 0.99, 0.42], b: [0.39, 0.985, 0.36], elbow: [0.27, 0.9, -0.08] },
+  cockpit4: { a: [0.395, 0.988, 0.352], b: [0.452, 0.978, 0.268], elbow: [0.33, 0.9, -0.1] },
+};
 const WHITE = new THREE.Color(1, 1, 1);
-const BLACK_GLASS = () => new THREE.MeshPhysicalMaterial({ name: 'Body', color: 0x010102, metalness: 0, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.4, specularIntensity: 0.6 });
+/**
+ * How hard the cockpit's neon inlays burn. Held well below 1 on purpose: with bloom on, anything near 2 turns every
+ * trim band into a white slab and the bodywork behind it into grey haze. Under 1 the bands keep their colour, read
+ * as thin lit lines, and the gloss black around them stays black.
+ */
+const TRIM_EMISSIVE = 0.9;
+// clearcoatRoughness is deliberately not mirror-sharp: at 0.03 a single point light makes a pinpoint highlight that
+// bloom then blows into a white disc sitting over the instruments. Spreading it keeps the sheen and loses the blob.
+const BLACK_GLASS = () => new THREE.MeshPhysicalMaterial({ name: 'Body', color: 0x010102, metalness: 0, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.11, envMapIntensity: 0.9, specularIntensity: 0.45 });
 const ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
 
 /** A cycle with its rider: supplied vehicle model, materialise effect, wheel/drive animation and cosmetic lean. */
@@ -44,7 +71,9 @@ export class CycleView {
     if (!this.inst.missing) revealMaterials(this.inst.root, this.reveal, new THREE.Color(color).multiplyScalar(0.9));
     const fit = FIT[model];
     if (fit && !this.inst.missing) {
-      const r = this.inst.root; r.scale.setScalar(fit.s); r.position.y = fit.y * fit.s; r.rotation.y = fit.turn;
+      const r = this.inst.root; r.scale.setScalar(fit.s); r.rotation.y = fit.turn;
+      // the offsets are in the model's own units, so they are applied inside the scaled frame
+      r.position.set((fit.x ?? 0) * fit.s, fit.y * fit.s, (fit.z ?? 0) * fit.s);
       accentTint(r, color);
     }
     this.body.add(this.inst.root); this.inst.play('Drive', 0);
@@ -81,7 +110,7 @@ export class CycleView {
    */
   firstPerson(on: boolean) {
     if (on === this.fp) return; this.fp = on;
-    if (on && !this.cockpit && (this.ctx.assets.has('cockpit3') || this.ctx.assets.has('cockpit2'))) { this.cockpit = this.buildCockpit(); this.root.add(this.cockpit); }
+    if (on && !this.cockpit && (this.ctx.assets.has('cockpit4') || this.ctx.assets.has('cockpit3') || this.ctx.assets.has('cockpit2'))) { this.cockpit = this.buildCockpit(); this.root.add(this.cockpit); }
     if (on && !this.cockpit) {
       const assets = this.ctx.assets, c = assets.instance('cockpit', { cloneMaterials: true }).root, sculpted = assets.has('console');
       c.traverse((o: any) => {
@@ -91,7 +120,7 @@ export class CycleView {
         // ...sunk so the console sits on top of it, and darkened so the eye goes to the console and the road
         if (sculpted) { o.position.y -= 0.21; o.material.color.setScalar(0.012); o.material.roughness = 0.55; o.material.metalness = 0.6; o.material.envMapIntensity = 0.35; }
         if (name === 'Screen') o.material = new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, toneMapped: false });
-        else if (name === 'Trim') { o.material.emissive = new THREE.Color(this.color); o.material.emissiveIntensity = 2.2; this.trims.push(o.material); }
+        else if (name === 'Trim') { o.material.emissive = new THREE.Color(this.color); o.material.emissiveIntensity = TRIM_EMISSIVE; this.trims.push(o.material); }
       });
       if (sculpted) {
         // dash, display, yoke, bars and the rider's armoured hands in one generated piece: model -X is forward
@@ -116,23 +145,26 @@ export class CycleView {
     this.inst.root.visible = !on; this.glow.visible = !on; if (this.rider) this.rider.root.visible = !on && this.mounted;
   }
   /**
-   * The Blender-built cockpit (scripts/blender/build_cockpit_v2.py): lacquered bodywork, an alloy binnacle carrying the
-   * live display, light-wall lamps either side of it, a yoke that rolls with the steering with the rider's gloved hands
-   * on its grips, and a glass canopy on a rear hinge.
+   * The Blender-built cockpit (scripts/blender/build_cockpit_v4.py, falling back to v3 / v2): a wrap-around binnacle
+   * swept on an arc about the rider carrying a four-layer instrument stack and the gauges, raked A-pillars, a floor
+   * pan with pedal plates, a yoke on one swept crossbar that rolls with the steering with the rider's gloved hands on
+   * its knurled grips, and a glass canopy on a rear hinge.
    */
   private buildCockpit() {
-    const assets = this.ctx.assets, c = assets.instance(assets.has('cockpit3') ? 'cockpit3' : 'cockpit2', { cloneMaterials: true }).root;
+    const assets = this.ctx.assets, key = assets.has('cockpit4') ? 'cockpit4' : assets.has('cockpit3') ? 'cockpit3' : 'cockpit2', c = assets.instance(key, { cloneMaterials: true }).root;
     c.traverse((o: any) => {
       if (!o.isMesh) return; o.castShadow = false; o.frustumCulled = false; const m = o.material, name = m?.name;
       if (name === 'Screen') o.material = new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, color: 0xb8c4cc, toneMapped: false }); // a little under full, as if seen through the dark glass
-      else if (name === 'Trim') { m.color.setScalar(0); m.roughness = 0.6; m.envMapIntensity = 0; m.emissive = new THREE.Color(this.color).lerp(WHITE, 0.3); m.emissiveIntensity = 2.2; this.trims.push(m); }
+      else if (name === 'Trim') { m.color.setScalar(0); m.roughness = 0.6; m.envMapIntensity = 0; m.emissive = new THREE.Color(this.color); m.emissiveIntensity = TRIM_EMISSIVE; this.trims.push(m); }
       else if (name === 'Holo') { o.material = holoFrame(this.color); o.renderOrder = 4; }
       else if (name === 'WallLamp') { o.material = new THREE.MeshBasicMaterial({ color: 0x1a2430, toneMapped: false }); this.lamps.push(o.material); }
       else if (name === 'Glass') { o.material = new THREE.MeshStandardMaterial({ name: 'Glass', color: 0xcfeaff, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.09, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 3 }); o.renderOrder = 6; }
       // black glass: near-black with a mirror-smooth coat, so the sun lights make small sharp highlights rather than a grey
       // sheen, and only a dim reflection of the sky; chrome stays as the bright accent (cockpit v3)
       else if (name === 'Body') o.material = BLACK_GLASS();
-      else if (name === 'Chrome') o.material = new THREE.MeshStandardMaterial({ name, color: 0x9aa3ad, metalness: 1, roughness: 0.09, envMapIntensity: 1 });
+      // roughness well above a mirror finish on purpose: at 0.09 the key light puts a pinpoint specular on the display
+      // hood that bloom then paints as a white disc across the instruments
+      else if (name === 'Chrome') o.material = new THREE.MeshStandardMaterial({ name, color: 0x8e979f, metalness: 1, roughness: 0.2, envMapIntensity: 1.1 });
       else if (name === 'Lens') o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x000000, metalness: 0, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.45, specularIntensity: 0.6 });
       else if (name === 'DisplayGlass') { o.material = new THREE.MeshPhysicalMaterial({ name, color: 0x000000, metalness: 0, roughness: 0.02, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.3, depthWrite: false, envMapIntensity: 2.4 }); o.renderOrder = 3; }
       else if (name === 'Needle') o.material = new THREE.MeshBasicMaterial({ color: 0xf4fbff, toneMapped: false });
@@ -146,8 +178,10 @@ export class CycleView {
       // node local -Z faces the eye: turn the disc round to face it, and sink it to just in front of the dial face
       g.mesh.rotation.y = Math.PI; g.mesh.position.z = 0.0045; at.add(g.mesh); return [g]; }); this.canopyK = this.canopyTarget === 1 && this.ctx.engine.elapsed - this.sealAt < 0.5 ? 0 : this.canopyTarget; this.poseCanopy();
     if (this.yoke && assets.has('hands')) for (const sx of [1, -1]) {
-      // grip ends in cockpit space (glTF: x, y up, z forward), carried into the yoke's frame so the hands roll with it
-      const a = new THREE.Vector3(sx * 0.3, 0.99, 0.42), b = new THREE.Vector3(sx * 0.39, 0.985, 0.36), mid = this.yoke.worldToLocal(a.clone().lerp(b, 0.5));
+      // grip ends in cockpit space (glTF: x, y up, z forward), carried into the yoke's frame so the hands roll with it.
+      // Each cockpit puts its grips somewhere different, so the anchors come from the model that was actually loaded.
+      const G = GRIPS[key] ?? GRIPS.cockpit3;
+      const a = new THREE.Vector3(sx * G.a[0], G.a[1], G.a[2]), b = new THREE.Vector3(sx * G.b[0], G.b[1], G.b[2]), mid = this.yoke.worldToLocal(a.clone().lerp(b, 0.5));
       const along = a.clone().sub(b).normalize(), fwd = new THREE.Vector3(0, 0.12, 1).normalize(), fingers = fwd.clone().addScaledVector(along, -fwd.dot(along)).normalize().add(fwd).normalize();
       const pivot = new THREE.Group(); pivot.position.copy(mid); this.yoke.add(pivot);
       const g = new GloveHand(assets, sx > 0 ? 'left' : 'right', this.color); g.gripBar(new THREE.Vector3(), fingers, along); pivot.add(g.root);
@@ -162,7 +196,7 @@ export class CycleView {
       // the forearm's local -Z ends up on top once it is aimed forward from the elbow
       const spine = new THREE.Mesh(new THREE.BoxGeometry(0.008, ARM * 0.55, 0.004), neon); spine.position.set(0, -0.06, -0.0575); arm.add(spine);
       arm.castShadow = false; c.add(arm);
-      this.gloves.push({ g, pivot, wrist, arm, axis: along, elbow: new THREE.Vector3(sx * 0.27, 0.9, -0.08), side: sx });
+      this.gloves.push({ g, pivot, wrist, arm, axis: along, elbow: new THREE.Vector3(sx * G.elbow[0], G.elbow[1], G.elbow[2]), side: sx });
     }
     this.driveArms(); return c;
   }
@@ -193,7 +227,7 @@ export class CycleView {
     if (!this.lamps.length) return; const tt = this.ctx.engine.elapsed;
     const col = state === 'on' ? this.lampCol.set(this.color).multiplyScalar(Math.sin(tt * 22) > 0 ? 2.2 : 1.2) : state === 'ready' ? this.lampCol.set(0x2aff8a).multiplyScalar(0.9 + 0.3 * Math.sin(tt * 4)) : state === 'charging' ? this.lampCol.set(0x1a2430).lerp(LAMP_DIM.set(this.color), k * 0.35) : this.lampCol.set(0x1a2430);
     for (const m of this.lamps) m.color.copy(col);
-    for (const m of this.trims) m.emissiveIntensity = 2.2 * this.power.value * (state === 'on' ? 1.6 + 0.6 * Math.sin(tt * 22) : 1);
+    for (const m of this.trims) m.emissiveIntensity = TRIM_EMISSIVE * this.power.value * (state === 'on' ? 1.7 + 0.6 * Math.sin(tt * 22) : 1);
   }
   /** End of the event: the canopy lifts. */
   unseal() { if (this.canopyTarget !== 0) { this.canopyTarget = 0; if (this.inst.actions.CanopyOpen) { this.inst.play('CanopyOpen', 0.1, true); this.fireT = this.inst.actions.CanopyOpen.getClip().duration; this.parked = true; } } }
@@ -202,7 +236,7 @@ export class CycleView {
   /** Start sequence, step 2: the drive fires and the machine is released. */
   launch() { this.parked = false; if (this.inst.actions.Fire) { this.inst.play('Fire', 0.05, true); this.fireT = Math.min(0.6, this.inst.actions.Fire.getClip().duration); } }
   /** First-person cockpit lighting level, 0..1: the instruments power up during the start sequence. */
-  setPower(k: number) { this.power.value = k; for (const m of this.trims) m.emissiveIntensity = 2.2 * k; }
+  setPower(k: number) { this.power.value = k; for (const m of this.trims) m.emissiveIntensity = TRIM_EMISSIVE * k; }
   /** Overrides the heading for this frame (first-person eases through a turn with the rider). */
   setYaw(yaw: number) { this.yaw = yaw; this.root.rotation.y = yaw; }
   /** yaw: heading (0 = +z). snap=true applies heading instantly (classic 90° turns). */

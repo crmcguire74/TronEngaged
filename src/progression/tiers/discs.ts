@@ -2,11 +2,12 @@ import type { EnemySpawn, TierDefinition } from '../types';
 
 type P = Record<string, number | string>;
 const e = (type: string, count: number, difficulty: number): EnemySpawn => ({ type, count, difficulty });
-const ENV = ['classic-stadium', 'vertical-chamber', 'data-core', 'fractured-lattice', 'corruption-zone', 'grand-colosseum'];
+const ENV = ['classic-stadium', 'vertical-chamber', 'data-core', 'fractured-lattice', 'corruption-zone', 'grand-colosseum', 'null-sector'];
 let n = 0;
 function tier(name: string, brief: string, enemies: EnemySpawn[], modifiers: string[], params: P, extra: Partial<TierDefinition> = {}): TierDefinition {
   n++;
-  return { id: n, mode: 'discs', name, brief, environment: ENV[Math.floor((n - 1) / 5)], enemies, modifiers, objective: extra.boss ? 'defeat-boss' : 'eliminate-all-enemies', unlocks: [], params: { playerPlatforms: 1, enemyPlatforms: 1, heights: 'flat', maxAttackers: 1, discSpeed: 1, ...params }, scoreMul: 1 + (n - 1) * 0.08, ...extra };
+  // the last block runs to six tiers, so the index is clamped rather than running off the end of the table
+  return { id: n, mode: 'discs', name, brief, environment: ENV[Math.min(ENV.length - 1, Math.floor((n - 1) / 5))], enemies, modifiers, objective: extra.boss ? 'defeat-boss' : 'eliminate-all-enemies', unlocks: [], params: { playerPlatforms: 1, enemyPlatforms: 1, heights: 'flat', maxAttackers: 1, discSpeed: 1, ...params }, scoreMul: 1 + (n - 1) * 0.08, ...extra };
 }
 
 /** 30 authored Disc Arena tiers. Every fifth tier changes arena design, enemy behaviour or mechanics. */
@@ -46,4 +47,12 @@ export const DISC_TIERS: readonly TierDefinition[] = [
   tier('System Collapse', 'Rapid topology changes, collapsing platforms and surges together.', [e('striker', 2, 0.86), e('ricochet', 1, 0.86), e('disruptor', 1, 0.84)], ['rapid-shift', 'collapsing', 'energy-surge'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'steps', maxAttackers: 3 }),
   tier('Final Protocol', 'An elite gauntlet in three waves.', [e('striker', 2, 0.88), e('guardian', 1, 0.86)], ['crossfire', 'cover', 'rotating-shields'], { playerPlatforms: 3, enemyPlatforms: 6, heights: 'vertical', rotating: 1, maxAttackers: 3 }, { waves: [[e('hunter', 2, 0.88), e('ricochet', 1, 0.9), e('disruptor', 1, 0.86)], [e('commander', 1, 0.92), e('guardian', 1, 0.9), e('striker', 2, 0.9)]] }),
   tier('Prime Kernel', 'The final authored encounter. Five phases.', [e('boss-prime', 1, 0.92)], ['cover'], { playerPlatforms: 3, enemyPlatforms: 6, heights: 'steps', maxAttackers: 3, shiftCapable: 1, collapseLater: 1 }, { boss: 'boss-prime', unlocks: ['arena:grand-colosseum', 'endless:discs', 'trail:prism'] }),
+
+  // ---------------------------------------------------------------- Null Sector: breakable decks and armed rivals
+  tier('Fracture Point', 'The decks are brittle here. Every disc that lands on one chips it, and a deck that fails is gone for the rest of the fight. Shoot the floor out from under them before they do it to you.', [e('sentinel', 2, 0.78), e('striker', 1, 0.8)], ['fragile-platforms'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', maxAttackers: 2, platformHp: 5 }),
+  tier('Lance Protocol', 'Lancers throw straight bolts that go through a raised shield. The wind-up is long and obvious: move out of the line instead of blocking it.', [e('lancer', 2, 0.8), e('sentinel', 1, 0.78)], ['cover'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', maxAttackers: 2 }),
+  tier('Breakers', 'Arc blades: slow, heavy, and they take barriers and decks apart in one pass. Let them commit, then punish the recovery.', [e('breaker', 2, 0.82), e('striker', 1, 0.82)], ['fragile-platforms', 'barriers'], { playerPlatforms: 3, enemyPlatforms: 4, heights: 'steps', barriers: 3, maxAttackers: 2, platformHp: 4 }),
+  tier('Re-Armament', 'Vanguards escalate as you wear them down: discs, then lances, then arc blades. Watch what each one is holding.', [e('vanguard', 2, 0.84)], ['fragile-platforms', 'cover'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'steps', maxAttackers: 2, platformHp: 5 }),
+  tier('Collapse Field', 'Brittle decks, surges and a mixed squad. There will be less floor every minute.', [e('vanguard', 1, 0.86), e('breaker', 1, 0.86), e('lancer', 1, 0.86), e('hunter', 1, 0.84)], ['fragile-platforms', 'energy-surge', 'volatile'], { playerPlatforms: 3, enemyPlatforms: 5, heights: 'vertical', volatile: 3, maxAttackers: 3, platformHp: 4 }),
+  tier('Null Kernel', 'Five phases over failing ground. It re-arms every time it loses a third of itself, and it breaks the deck you are standing on to make you move.', [e('boss-null', 1, 0.95)], ['fragile-platforms', 'cover'], { playerPlatforms: 3, enemyPlatforms: 6, heights: 'steps', maxAttackers: 3, shiftCapable: 1, platformHp: 6 }, { boss: 'boss-null', unlocks: ['arena:null-sector', 'trail:nullwave', 'cycle:argon', 'disc:identity'] }),
 ];

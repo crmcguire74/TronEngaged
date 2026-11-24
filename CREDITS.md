@@ -5,6 +5,11 @@
 | Used as | Title | Author | Licence | Changes |
 |---|---|---|---|---|
 | Skyline around the cycle arenas (`environments/cycle-arenas/city.glb`) | "Tron Light cycle Arena" | ImWillows, via Sketchfab | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Re-exported from Blender, scaled, shadows disabled |
+| Rival cycle "Argon Runner" and a player unlock (`vehicles/enemies/cycle-argon.glb`) | "TRON: Uprising — ArgonCity Light Cycle" | TheTinDog, via Sketchfab | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Scaled and turned to the game's axes, light lines recoloured per rider at runtime |
+| Rival cycle "Moto Bulk" and a player unlock (`vehicles/enemies/cycle-moto.glb`) | "Moto de Tron" | monkameo, via Sketchfab | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Scaled, recentred on the machine and turned to the game's axes; recoloured per rider |
+| Air interceptor in the Outlands races (`vehicles/air/light-jet.glb`) | "One man light jet tron" | f3nix, via Sketchfab | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Scaled, laid nose-forward, emissive detail recoloured |
+| Arc-blade projectile thrown by Breakers, Vanguards and the Null Kernel (`weapons/melee/arc-sword.glb`) | "Tron Light Arc Sword" | SpringSociety, via Sketchfab | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Scaled and oriented along the flight path; emissive boosted |
+| Unlockable player disc (`weapons/discs/disc-identity.glb`) | "Tron Legacy Identity Disc" | Shriker1, via Sketchfab | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Scaled only |
 
 The owner confirmed this is the source of `assets/Environments/cycle_city.glb` (the file was re-exported and no longer
 carries its Sketchfab metadata).
@@ -23,6 +28,8 @@ Per-file provenance (source file, hashes, modifications) is in `assets/audio/voi
 - Runners, cycles, discs, gloves, platform pedestal and stadium shell: built by the game's author.
 - First-person cockpit, cycle-grid stadium and the ring-wheel rival cycle in `assets/generated/`: modelled by script in
   Blender (`scripts/blender/`).
+- First-person cockpit v4 (`assets/generated/cockpit-v4.glb`): wrap-around swept binnacle, four-layer instrument stack,
+  raked A-pillars, hex vents, floor pan and single-sweep yoke, modelled by script (`scripts/blender/build_cockpit_v4.py`).
 - Cockpit console with the rider's hands, `assets/generated/cockpit-console.glb`: generated for this game from a concept
   image made for it (GPT Image, then Tripo image-to-3D, both through the owner's Higgsfield account), then fitted and
   recoloured in code.
@@ -47,18 +54,13 @@ These files stay in the source folder and are not copied into the build.
 | `Environments/bridge.glb` | "Tron Legacy Bridge — 2008 Teaser Version" | Shriker1 | CC BY 4.0 | Recreates a film set |
 | `Environments/tunnel.glb` | "Tron tunnel" | V | CC BY 4.0 | Not used by any track |
 | `Environments/sky_circuit.glb` | "Tron Race Arena" | ImWillows | CC BY 4.0 | Not used by any track |
-| `Objects/Discs/identity_disc.glb` | "Tron Legacy Identity Disc" | Shriker1 | CC BY 4.0 | Film prop design |
-| `Objects/arc_sword.glb` | "Tron Light Arc Sword" | SpringSociety | CC BY 4.0 | Not used |
-| `Concept Images/New/cycles/flynns_lightcycle…` | "Flynn's Lightcycle — Tron Evolution Battle Grids" | Shriker1 | Sketchfab Standard | Game vehicle design |
-| `Concept Images/New/cycles/agile_lightcycle…` | "Agile Lightcycle — Tron Evolution Battle Grids" | Shriker1 | Sketchfab Standard | Game vehicle design |
-| `Concept Images/New/cycles/tron_uprising…` | "TRON: Uprising — ArgonCity Light Cycle" | TheTinDog | CC BY 4.0 | Series vehicle design |
+| `Concept Images/New/cycles/flynns_lightcycle…` | "Flynn's Lightcycle — Tron Evolution Battle Grids" | Shriker1 | Sketchfab Standard | The Sketchfab Standard licence does not allow the model file itself to be redistributed, and a web build ships it to every visitor |
+| `Concept Images/New/cycles/agile_lightcycle…` | "Agile Lightcycle — Tron Evolution Battle Grids" | Shriker1 | Sketchfab Standard | Sketchfab Standard: not redistributable in a build |
 | `Concept Images/New/cycles/tron_moto_sdc…` (two files) | "TRON MOTO SDC (FREE)" and its low-poly version | SDC PERFORMANCE | CC BY 4.0 | 1.06 million triangles each; far over budget |
-| `Concept Images/New/cycles/moto_de_tron.glb` | "Moto de Tron" | monkameo | CC BY 4.0 | Film vehicle design |
-| `Concept Images/New/environments/lightcycle_arena_rev_02…` | "Lightcycle Arena Rev 02 — TE:BG" | Shriker1 | Sketchfab Standard | Game arena design |
+| `Concept Images/New/environments/lightcycle_arena_rev_02…` | "Lightcycle Arena Rev 02 — TE:BG" | Shriker1 | Sketchfab Standard | Sketchfab Standard: not redistributable in a build |
 | `Concept Images/New/environments/tron_grid_floor.glb` | "Tron Grid Floor" | SpringSociety (per the file's own metadata) | CC BY 4.0 | The game draws its own floor |
 | `Concept Images/New/other/helmet_hyper…` | "Helmet Hyper — Tron Evolution Battle Grids" | Shriker1 | CC BY 4.0 | Game character design |
-| `Concept Images/New/vehicles/recognizer…` | "Recognizer — Tron (1982)" | arabinowitz | Sketchfab Standard | Film vehicle design |
-| `Concept Images/New/vehicles/one_man_light_jet_tron.glb` | "One man light jet tron" | f3nix | CC BY 4.0 | Film vehicle design |
+| `Concept Images/New/vehicles/recognizer…` | "Recognizer — Tron (1982)" | arabinowitz | Sketchfab Standard | Sketchfab Standard: not redistributable in a build. An original heavy hauler is modelled by script instead (`scripts/blender/build_hauler.py`) |
 | `Concept Images/New/environments/TronRoad.webp` | — | — | — | Film still |
 
 Authors and licences for the Sketchfab files come from the metadata embedded in each download where present, and

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-13T00:55:59.324Z",
+  "generated": "2026-11-24T02:46:47.531Z",
   "note": "Source files in assets/ are never moved or renamed; runtime copies live in public/game-assets/.",
   "assets": [
     {
@@ -411,6 +411,135 @@
       "generator": "Khronos glTF Blender I/O v4.5.51"
     },
     {
+      "name": "cycle-argon",
+      "source": "assets/Concept Images/New/cycles/tron_uprising_-_argoncity_light_cycle.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-argon.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1903880,
+      "intendedUsage": "Rival cycle. \"TRON: Uprising — ArgonCity Light Cycle\" by TheTinDog, CC BY 4.0",
+      "status": "ready",
+      "triangles": 34808,
+      "meshes": 8,
+      "materials": [
+        "Body",
+        "Glow",
+        "Headlights",
+        "BLACK",
+        "Glass",
+        "Material",
+        "Material.010",
+        "Gray"
+      ],
+      "textures": 1,
+      "rigged": true,
+      "bones": 19,
+      "animations": [
+        "Argon_LightCycle|Argon_LightCycleAction"
+      ],
+      "extensions": [
+        "KHR_materials_specular",
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Sketchfab-16.95.0"
+    },
+    {
+      "name": "cycle-moto",
+      "source": "assets/Concept Images/New/cycles/moto_de_tron.glb",
+      "runtime": "game-assets/vehicles/enemies/cycle-moto.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1155672,
+      "intendedUsage": "Rival cycle (heavy class). \"Moto de Tron\" by monkameo, CC BY 4.0",
+      "status": "ready",
+      "triangles": 32686,
+      "meshes": 54,
+      "materials": [
+        "phong2",
+        "phong1",
+        "phongE1",
+        "lambert2"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [],
+      "generator": "Sketchfab-12.67.0"
+    },
+    {
+      "name": "light-jet",
+      "source": "assets/Concept Images/New/vehicles/one_man_light_jet_tron.glb",
+      "runtime": "game-assets/vehicles/air/light-jet.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 724000,
+      "intendedUsage": "Interceptor that strafes the circuit and drops mines. \"One man light jet tron\" by f3nix, CC BY 4.0",
+      "status": "ready",
+      "triangles": 10132,
+      "meshes": 2,
+      "materials": [
+        "black",
+        "tron"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [],
+      "generator": "Sketchfab-12.67.0"
+    },
+    {
+      "name": "arc-sword",
+      "source": "assets/Objects/arc_sword.glb",
+      "runtime": "game-assets/weapons/melee/arc-sword.glb",
+      "category": "weapon",
+      "format": "GLB",
+      "sizeBytes": 1316372,
+      "intendedUsage": "Arc sword carried by upgraded rivals and bosses in Disc Arena. \"Tron Light Arc Sword\" by SpringSociety, CC BY 4.0",
+      "status": "ready",
+      "triangles": 1531,
+      "meshes": 4,
+      "materials": [
+        "Blade_Mat.001",
+        "Metal.001",
+        "Neon.001",
+        "quora_mat.005"
+      ],
+      "textures": 7,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength",
+        "KHR_materials_specular"
+      ],
+      "generator": "Sketchfab-0.3.0"
+    },
+    {
+      "name": "disc-identity",
+      "source": "assets/Objects/Discs/identity_disc.glb",
+      "runtime": "game-assets/weapons/discs/disc-identity.glb",
+      "category": "weapon",
+      "format": "GLB",
+      "sizeBytes": 723276,
+      "intendedUsage": "Boss / elite disc projectile. \"Tron Legacy Identity Disc\" by Shriker1, CC BY 4.0",
+      "status": "ready",
+      "triangles": 7424,
+      "meshes": 1,
+      "materials": [
+        "Disc"
+      ],
+      "textures": 4,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_specular"
+      ],
+      "generator": "Sketchfab-16.25.0"
+    },
+    {
       "name": "stand",
       "source": "assets/generated/arena-stand.glb",
       "runtime": "game-assets/environments/cycle-arenas/stand.glb",
@@ -541,6 +670,32 @@
       "generator": "Khronos glTF Blender I/O v4.5.51"
     },
     {
+      "name": "hauler",
+      "source": "assets/generated/hauler.glb",
+      "runtime": "game-assets/vehicles/air/hauler.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 983024,
+      "intendedUsage": "Overwatch Hauler: the heavy craft that stands over the Outlands events, original design (scripts/blender/build_hauler.py)",
+      "status": "ready",
+      "triangles": 36708,
+      "meshes": 4,
+      "materials": [
+        "Body",
+        "Chrome",
+        "Lens",
+        "Trim"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v5.3.43"
+    },
+    {
       "name": "patrol-craft",
       "source": "assets/generated/patrol-craft.glb",
       "runtime": "game-assets/vehicles/air/patrol-craft.glb",
@@ -568,6 +723,40 @@
         "KHR_materials_emissive_strength"
       ],
       "generator": "Khronos glTF Blender I/O v4.5.51"
+    },
+    {
+      "name": "cockpit-v4",
+      "source": "assets/generated/cockpit-v4.glb",
+      "runtime": "game-assets/vehicles/player/cockpit-v4.glb",
+      "category": "vehicle",
+      "format": "GLB",
+      "sizeBytes": 1298604,
+      "intendedUsage": "First-person / VR cockpit v4: wrap-around swept binnacle, four-layer instrument stack, raked A-pillars, hex vents, floor pan with pedal plates, single-sweep yoke (scripts/blender/build_cockpit_v4.py)",
+      "status": "ready",
+      "triangles": 46750,
+      "meshes": 14,
+      "materials": [
+        "Body",
+        "Satin",
+        "Glass",
+        "Chrome",
+        "Trim",
+        "Needle",
+        "DisplayGlass",
+        "Holo",
+        "Lens",
+        "Rubber",
+        "Screen",
+        "WallLamp"
+      ],
+      "textures": 0,
+      "rigged": false,
+      "bones": 0,
+      "animations": [],
+      "extensions": [
+        "KHR_materials_emissive_strength"
+      ],
+      "generator": "Khronos glTF Blender I/O v5.3.43"
     },
     {
       "name": "cockpit-v3",

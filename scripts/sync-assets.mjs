@@ -15,12 +15,19 @@ const MAP = [
   ['Vehicles/Tron-RedLIghtCycle.glb', 'vehicles/enemies/cycle-ember.glb', 'vehicle', 'Rival cycle', 'ready'],
   ['generated/cycle-wraith.glb', 'vehicles/enemies/cycle-wraith.glb', 'vehicle', 'Rival cycle, generated for this game (Tripo text-to-3D via Higgsfield); recoloured per rider at runtime', 'ready'],
   ['generated/cycle-bulwark.glb', 'vehicles/enemies/cycle-bulwark.glb', 'vehicle', 'Rival ring-wheel cycle, original design (scripts/blender/build_cycles.py)', 'ready'],
+  ['Concept Images/New/cycles/tron_uprising_-_argoncity_light_cycle.glb', 'vehicles/enemies/cycle-argon.glb', 'vehicle', 'Rival cycle. "TRON: Uprising — ArgonCity Light Cycle" by TheTinDog, CC BY 4.0', 'ready'],
+  ['Concept Images/New/cycles/moto_de_tron.glb', 'vehicles/enemies/cycle-moto.glb', 'vehicle', 'Rival cycle (heavy class). "Moto de Tron" by monkameo, CC BY 4.0', 'ready'],
+  ['Concept Images/New/vehicles/one_man_light_jet_tron.glb', 'vehicles/air/light-jet.glb', 'vehicle', 'Interceptor that strafes the circuit and drops mines. "One man light jet tron" by f3nix, CC BY 4.0', 'ready'],
+  ['Objects/arc_sword.glb', 'weapons/melee/arc-sword.glb', 'weapon', 'Arc sword carried by upgraded rivals and bosses in Disc Arena. "Tron Light Arc Sword" by SpringSociety, CC BY 4.0', 'ready'],
+  ['Objects/Discs/identity_disc.glb', 'weapons/discs/disc-identity.glb', 'weapon', 'Boss / elite disc projectile. "Tron Legacy Identity Disc" by Shriker1, CC BY 4.0', 'ready'],
   ['generated/arena-stand.glb', 'environments/cycle-arenas/stand.glb', 'environment', 'Grandstand module around the cycle grid (scripts/blender/build_arena_kit.py)', 'ready'],
   ['generated/arena-pylon.glb', 'environments/cycle-arenas/pylon.glb', 'environment', 'Corner pylon for the cycle grid (scripts/blender/build_arena_kit.py)', 'ready'],
   ['generated/cockpit-console.glb', 'vehicles/player/cockpit-console.glb', 'vehicle', 'Cockpit console with the rider\'s hands, generated for this game (concept image, then Tripo image-to-3D via Higgsfield)', 'ready'],
   ['generated/drone.glb', 'vehicles/air/drone.glb', 'vehicle', 'Broadcast camera drone that films the action, original design (scripts/blender/build_fleet.py)', 'ready'],
   ['generated/carrier.glb', 'vehicles/air/carrier.glb', 'vehicle', 'Heavy carrier crossing the sky above arenas and circuits, original design (scripts/blender/build_fleet.py)', 'ready'],
+  ['generated/hauler.glb', 'vehicles/air/hauler.glb', 'vehicle', 'Overwatch Hauler: the heavy craft that stands over the Outlands events, original design (scripts/blender/build_hauler.py)', 'ready'],
   ['generated/patrol-craft.glb', 'vehicles/air/patrol-craft.glb', 'vehicle', 'Patrol skimmer circling above arenas and circuits, original design (scripts/blender/build_craft.py)', 'ready'],
+  ['generated/cockpit-v4.glb', 'vehicles/player/cockpit-v4.glb', 'vehicle', 'First-person / VR cockpit v4: wrap-around swept binnacle, four-layer instrument stack, raked A-pillars, hex vents, floor pan with pedal plates, single-sweep yoke (scripts/blender/build_cockpit_v4.py)', 'ready'],
   ['generated/cockpit-v3.glb', 'vehicles/player/cockpit-v3.glb', 'vehicle', 'First-person / VR cockpit v3: clear-coat black, chrome, neon bands, octagonal glass display, live gauges, ribbed grips (scripts/blender/build_cockpit_v3.py)'],
   ['generated/cockpit-v2.glb', 'vehicles/player/cockpit-v2.glb', 'vehicle', 'First-person / VR cockpit with steerable yoke, light-wall lamps and hinged canopy (scripts/blender/build_cockpit_v2.py)', 'ready'],
   ['generated/cockpit.glb', 'vehicles/player/cockpit.glb', 'vehicle', 'First-person / VR cockpit (built by scripts/blender/build_cockpit.py)', 'ready'],
@@ -50,8 +57,10 @@ for (const [src, dst, category, role, status] of MAP) {
 const pano = path.join(SRC, 'Environments/Panoramic Outer Environments/Sample 1/arena_360_equirectangular.png');
 const panoOut = path.join(OUT, 'panoramas/disc-arena/arena-360.jpg');
 fs.mkdirSync(path.dirname(panoOut), { recursive: true });
+// `sips` is macOS-only. Off macOS, keep whatever JPEG is already committed rather than dropping a 2.5 MB PNG
+// beside it that nothing loads; only fall back to copying the source when there is no JPEG at all.
 try { execFileSync('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '82', pano, '--out', panoOut], { stdio: 'ignore' }); }
-catch { fs.copyFileSync(pano, panoOut.replace('.jpg', '.png')); }
+catch { if (!fs.existsSync(panoOut)) fs.copyFileSync(pano, panoOut.replace('.jpg', '.png')); }
 entries.push({ name: 'arena-360', source: 'assets/Environments/Panoramic Outer Environments/Sample 1/arena_360_equirectangular.png', runtime: 'game-assets/panoramas/disc-arena/arena-360.jpg', category: 'panorama', format: 'JPEG (from PNG 1774x887, equirectangular)', intendedUsage: 'Distant sky dome for arenas; never used for collision', status: 'ready (low resolution: used tinted/blurred behind real 3D geometry)' });
 // Recorded audio (voice, crowd, effects, music) brought over from the owner's earlier project; provenance is in voice-manifest.json.
 for (const f of fs.readdirSync(path.join(SRC, 'audio'))) if (/\.(m4a|mp3)$/.test(f)) { const d = path.join(OUT, 'audio', f); fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(path.join(SRC, 'audio', f), d); entries.push({ name: f, source: 'assets/audio/' + f, runtime: 'game-assets/audio/' + f, category: 'audio', format: f.split('.').pop(), intendedUsage: 'Recorded audio layer over the synthesised sound', status: 'ready' }); }

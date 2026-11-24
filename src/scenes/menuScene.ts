@@ -24,7 +24,7 @@ export class MenuScene {
     const th = theme('classic-grid'), W = this.world;
     // backdrop: the supplied city panorama wraps the horizon; the lattice floor runs out to meet it
     this.sky = suppliedSky(th, ctx.assets, 'menu') ?? skyDome(th, ctx.assets.texture(CITY_PANO.halo), 1500, { lo: -25, hi: 41, gain: 0.95, mix: 1 }); W.add(this.sky); lights(W, th, false);
-    this.floor = gridFloor(2400, th, 6, { fade: 420, offset: 3, glow: 0.7 }); W.add(this.floor);
+    this.floor = gridFloor(2400, th, 6, { fade: 420, offset: 3, glow: 0.5 }); W.add(this.floor);
     ['cycle:azure', 'cycle:ember', 'cycle:violet'].forEach((k, i) => {
       const inst = ctx.assets.instance(k); tuneEmissive(inst.root, 1.4); inst.play('DriveFast', 0); const ribbon = new Ribbon(COLORS[i], 110, 1.5, true);
       W.add(inst.root, ribbon.mesh); this.riders.push({ root: inst.root, ribbon, s: i * 130, half: 46 + i * 34, speed: 34 + i * 5, mixer: inst.mixer });

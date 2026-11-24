@@ -17,10 +17,10 @@ export function mainScreen(app: App): Screen {
   const s = app.store.data, done = (t: TrackId) => TRACKS[t].tiers.filter((x) => isComplete(s, x)).length;
   const next = (t: TrackId) => { const list = TRACKS[t].tiers, n = list[Math.min(unlockedCount(s, t), list.length) - 1]; return `Tier ${String(n.id).padStart(2, '0')} · ${n.name}`; };
   return {
-    id: 'main', layout: 'home', kicker: 'VANTA ARC', title: 'Choose a game', noBack: true,
+    id: 'main', layout: 'home', kicker: 'TRON ENGAGED', title: 'Choose a game', noBack: true,
     items: [
-      { kind: 'button', label: 'Disc Arena', sub: 'Throw, bank and parry across suspended platforms.', card: { done: done('discs'), total: 30, next: next('discs'), glyph: 'disc' }, action: () => app.playNext('discs') },
-      { kind: 'button', label: 'Arc Cycles', sub: 'Wall-laying combat and circuit racing.', card: { done: done('cycles'), total: 30, next: next('cycles'), glyph: 'cycle' }, action: () => app.menu.open(() => cycleScreen(app)) },
+      { kind: 'button', label: 'Disc Arena', sub: 'Throw, bank and parry across suspended platforms.', card: { done: done('discs'), total: TRACKS.discs.tiers.length, next: next('discs'), glyph: 'disc' }, action: () => app.playNext('discs') },
+      { kind: 'button', label: 'Light Cycles', sub: 'Wall-laying combat and circuit racing.', card: { done: done('cycles'), total: TRACKS.cycles.tiers.length, next: next('cycles'), glyph: 'cycle' }, action: () => app.menu.open(() => cycleScreen(app)) },
       { kind: 'button', label: 'Tier select', link: true, action: () => app.menu.open(() => trackPick(app)) },
       { kind: 'button', label: 'Loadout', link: true, action: () => app.menu.open(() => loadoutScreen(app)) },
       { kind: 'button', label: 'Records', link: true, action: () => app.menu.open(() => recordsScreen(app)) },
@@ -34,11 +34,11 @@ export function mainScreen(app: App): Screen {
 export function cycleScreen(app: App): Screen {
   const s = app.store.data, n = (t: TrackId) => `${TRACKS[t].tiers.filter((x) => isComplete(s, x)).length}/${TRACKS[t].tiers.length}`;
   return {
-    id: 'cycles', kicker: 'Arc Cycles', title: 'Combat or Racing', text: 'Combat is classic: exact 90° turns and permanent hardlight walls. Racing is fluid: steering, drifting, boost and checkpoints. Each keeps its own progress.',
+    id: 'cycles', kicker: 'Light Cycles', title: 'Combat or Racing', text: 'Combat is classic: exact 90° turns and permanent hardlight walls. Racing is fluid: steering, drifting, boost and checkpoints. Each keeps its own progress.',
     items: [
-      { kind: 'button', label: 'Campaign', sub: 'All 30 tiers, alternating Combat and Racing', tag: n('cycles'), primary: true, action: () => app.playNext('cycles') },
-      { kind: 'button', label: 'Combat', sub: 'Last rider standing — 15 tiers', tag: n('combat'), action: () => app.playNext('combat') },
-      { kind: 'button', label: 'Racing', sub: 'Circuits, sprints, eliminations — 15 tiers', tag: n('race'), action: () => app.playNext('race') },
+      { kind: 'button', label: 'Campaign', sub: `All ${TRACKS.cycles.tiers.length} tiers, alternating Combat and Racing`, tag: n('cycles'), primary: true, action: () => app.playNext('cycles') },
+      { kind: 'button', label: 'Combat', sub: `Last rider standing — ${TRACKS.combat.tiers.length} tiers`, tag: n('combat'), action: () => app.playNext('combat') },
+      { kind: 'button', label: 'Racing', sub: `Circuits, sprints, eliminations — ${TRACKS.race.tiers.length} tiers`, tag: n('race'), action: () => app.playNext('race') },
       { kind: 'button', label: 'Tier Select', action: () => app.menu.open(() => tierScreen(app, 'cycles')) },
       { kind: 'button', label: 'Endless Combat', sub: endlessUnlocked(s, 'cycle-combat') ? 'Seeded, escalating arenas' : 'Clear all Combat tiers to unlock', disabled: !endlessUnlocked(s, 'cycle-combat'), action: () => app.startEndless('cycle-combat') },
       { kind: 'button', label: 'Endless Racing', sub: endlessUnlocked(s, 'cycle-race') ? 'Seeded events without a final tier' : 'Clear all Racing tiers to unlock', disabled: !endlessUnlocked(s, 'cycle-race'), action: () => app.startEndless('cycle-race') },
@@ -78,6 +78,7 @@ export function loadoutScreen(app: App): Screen {
     items: [
       { kind: 'choice', label: 'Runner', get: () => st.skin, set: (v) => { st.skin = v; app.applySettings(); }, options: opts('skin') },
       { kind: 'choice', label: 'Cycle', get: () => st.cycle, set: (v) => { st.cycle = v; app.applySettings(); }, options: opts('cycle') },
+      { kind: 'choice', label: 'Disc', get: () => st.disc, set: (v) => { st.disc = v; app.applySettings(); }, options: opts('disc') },
       { kind: 'choice', label: 'Trail finish', get: () => st.trail, set: (v) => { st.trail = v; app.applySettings(); }, options: opts('trail') },
       { kind: 'row', label: 'Top speed', value: Math.round(veh.top * 3.6) + ' km/h' }, { kind: 'row', label: 'Acceleration', value: veh.accel.toFixed(0) }, { kind: 'row', label: 'Handling', value: veh.handling.toFixed(2) },
       { kind: 'title', label: `Locked: ${COSMETICS.filter((c) => !s.unlocks.includes(c.id)).map((c) => c.label).join(' · ') || 'nothing — all finishes unlocked'}` },

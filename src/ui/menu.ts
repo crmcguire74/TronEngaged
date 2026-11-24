@@ -80,7 +80,7 @@ export function itemValue(it: Item): string {
 /** DOM renderer for the desktop command-centre menus. */
 export class MenuDom {
   /** Supplied logo image; when set it replaces the lettered wordmark. */ logoUrl: string | null = null;
-  private logo() { return this.logoUrl ? `<div class="logo"><img src="${this.logoUrl}" alt="VANTA ARC"></div>` : '<div class="logo">VANTA<span>ARC</span><small>LATTICE PROTOCOL</small></div>'; }
+  private logo() { return this.logoUrl ? `<div class="logo"><img src="${this.logoUrl}" alt="TRON ENGAGED"></div>` : '<div class="logo">TRON<span>ENGAGED</span><small>A MODERN 3D TRON EXPERIENCE</small></div>'; }
   readonly root = document.createElement('div'); topRight: () => string = () => ''; onTop: (id: string) => void = () => {};
   constructor(private menu: Menu, parent: HTMLElement) { this.root.className = 'menu'; this.root.style.display = 'none'; parent.appendChild(this.root); menu.onChange = () => this.render(); }
   render() {

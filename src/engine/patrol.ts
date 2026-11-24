@@ -102,8 +102,10 @@ export class Drones {
 /** A heavy carrier (scripts/blender/build_fleet.py) crossing the sky far above, on a long straight pass that repeats. */
 export class Carrier {
   readonly group = new THREE.Group(); private o: THREE.Object3D | null = null; private s = 0; private nav: { m: THREE.MeshBasicMaterial; c: THREE.Color }[] = []; private t = 0;
-  constructor(assets: Assets, color: number, private p: { cx: number; cz: number; offset: number; alt: number; heading: number; len: number; speed?: number }) {
-    if (!assets.has('carrier')) return; this.o = assets.instance('carrier', { cloneMaterials: true }).root; this.nav = skinFleet(this.o, color);
+  /** `key` picks the model: the standard carrier, or the heavy Overwatch Hauler over the Outlands. */
+  constructor(assets: Assets, color: number, private p: { cx: number; cz: number; offset: number; alt: number; heading: number; len: number; speed?: number; key?: string }) {
+    const key = p.key && assets.has(p.key) ? p.key : 'carrier';
+    if (!assets.has(key)) return; this.o = assets.instance(key, { cloneMaterials: true }).root; this.nav = skinFleet(this.o, color);
     this.o.rotation.y = p.heading; this.group.add(this.o); this.s = p.len * 0.35;
   }
   update(dt: number) {

@@ -20,13 +20,14 @@ export function unlockedCount(s: SaveData, track: TrackId): number {
 export const trackComplete = (s: SaveData, track: TrackId) => TRACKS[track].tiers.every((t) => isComplete(s, t));
 export const endlessUnlocked = (s: SaveData, mode: GameMode) => (mode === 'discs' ? trackComplete(s, 'discs') : mode === 'cycle-combat' ? trackComplete(s, 'combat') : trackComplete(s, 'race'));
 
-export interface Cosmetic { id: string; kind: 'skin' | 'cycle' | 'trail' | 'arena' | 'endless'; label: string; color?: number }
+export interface Cosmetic { id: string; kind: 'skin' | 'cycle' | 'trail' | 'disc' | 'arena' | 'endless'; label: string; color?: number }
 export const COSMETICS: Cosmetic[] = [
   { id: 'skin:azure', kind: 'skin', label: 'Azure Runner' }, { id: 'skin:cobalt', kind: 'skin', label: 'Cobalt Runner' }, { id: 'skin:ivory', kind: 'skin', label: 'Ivory Runner' }, { id: 'skin:crimson', kind: 'skin', label: 'Crimson Runner' },
-  { id: 'cycle:azure', kind: 'cycle', label: 'Azure Mk I' }, { id: 'cycle:jade', kind: 'cycle', label: 'Jade Lancer' }, { id: 'cycle:ember', kind: 'cycle', label: 'Ember Rush' }, { id: 'cycle:violet', kind: 'cycle', label: 'Violet Apex' },
-  { id: 'trail:ion', kind: 'trail', label: 'Ion', color: 0x4fe3ff }, { id: 'trail:amber', kind: 'trail', label: 'Amber', color: 0xffb62e }, { id: 'trail:violet', kind: 'trail', label: 'Violet', color: 0xb56bff }, { id: 'trail:jade', kind: 'trail', label: 'Jade', color: 0x45ff9a }, { id: 'trail:prism', kind: 'trail', label: 'Prism', color: 0xffffff },
+  { id: 'cycle:azure', kind: 'cycle', label: 'Azure Mk I' }, { id: 'cycle:jade', kind: 'cycle', label: 'Jade Lancer' }, { id: 'cycle:ember', kind: 'cycle', label: 'Ember Rush' }, { id: 'cycle:violet', kind: 'cycle', label: 'Violet Apex' }, { id: 'cycle:argon', kind: 'cycle', label: 'Argon Runner' }, { id: 'cycle:moto', kind: 'cycle', label: 'Moto Bulk' },
+  { id: 'disc:azure', kind: 'disc', label: 'Standard Disc' }, { id: 'disc:identity', kind: 'disc', label: 'Identity Disc' },
+  { id: 'trail:ion', kind: 'trail', label: 'Ion', color: 0x4fe3ff }, { id: 'trail:amber', kind: 'trail', label: 'Amber', color: 0xffb62e }, { id: 'trail:violet', kind: 'trail', label: 'Violet', color: 0xb56bff }, { id: 'trail:jade', kind: 'trail', label: 'Jade', color: 0x45ff9a }, { id: 'trail:prism', kind: 'trail', label: 'Prism', color: 0xffffff }, { id: 'trail:nullwave', kind: 'trail', label: 'Nullwave', color: 0xff6a1f },
 ];
-export const DEFAULT_UNLOCKS = ['skin:azure', 'cycle:azure', 'trail:ion'];
+export const DEFAULT_UNLOCKS = ['skin:azure', 'cycle:azure', 'trail:ion', 'disc:azure'];
 export const cosmetic = (id: string) => COSMETICS.find((c) => c.id === id);
 
 export interface Achievement { id: string; label: string; hint: string; test: (s: SaveData) => boolean }

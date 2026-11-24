@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DISC_TIERS } from '../progression/tiers/discs';
 import { COMBAT_TIERS, CYCLE_TIERS, RACE_TIERS } from '../progression/tiers/cycles';
 import { ARCHETYPES } from '../games/discs/archetypes';
+import { THEMES } from '../engine/env';
 import { endlessSkill, endlessTier } from '../progression/director';
 import { buildCombatConfig, buildDiscConfig, buildRaceConfig } from '../progression/build';
 import { validateArena } from '../games/discs/arena';
@@ -15,18 +16,22 @@ import { CombatSim } from '../games/cycles/combat';
 import { runCombatBot, runDiscBot } from './bots';
 
 describe('tier configuration', () => {
-  it('ships 30 authored tiers per primary game with sequential ids', () => {
-    expect(DISC_TIERS.length).toBe(30); expect(CYCLE_TIERS.length).toBe(30); expect(COMBAT_TIERS.length).toBe(15); expect(RACE_TIERS.length).toBe(15);
+  it('ships 36 authored tiers per primary game with sequential ids', () => {
+    expect(DISC_TIERS.length).toBe(36); expect(CYCLE_TIERS.length).toBe(36); expect(COMBAT_TIERS.length).toBe(18); expect(RACE_TIERS.length).toBe(18);
     DISC_TIERS.forEach((t, i) => { expect(t.id).toBe(i + 1); expect(t.mode).toBe('discs'); }); CYCLE_TIERS.forEach((t, i) => { expect(t.id).toBe(i + 1); expect(t.mode).toBe(i % 2 ? 'cycle-race' : 'cycle-combat'); });
   });
   it('every enemy type referenced by a tier exists, and bosses have authored phases', () => {
     for (const t of DISC_TIERS) for (const e of [t.enemies, ...(t.waves ?? [])].flat()) expect(ARCHETYPES[e.type], e.type).toBeTruthy();
-    const bosses = DISC_TIERS.filter((t) => t.boss); expect(bosses.map((t) => t.id)).toEqual([5, 10, 20, 25, 30]);
+    const bosses = DISC_TIERS.filter((t) => t.boss); expect(bosses.map((t) => t.id)).toEqual([5, 10, 20, 25, 30, 36]);
     for (const t of bosses) expect(ARCHETYPES[t.boss!].boss!.phases.length).toBeGreaterThanOrEqual(2);
   });
+  it('every tier names an environment that has a theme', () => {
+    for (const t of [...DISC_TIERS, ...CYCLE_TIERS]) expect(THEMES[t.environment], `${t.mode} ${t.id} ${t.name} -> ${t.environment}`).toBeTruthy();
+  });
   it('every fifth tier introduces a new environment, mechanic or boss', () => {
-    for (let i = 5; i < 30; i += 5) expect(DISC_TIERS[i].environment).not.toBe(DISC_TIERS[i - 1].environment);
-    const seen = new Set<string>(); for (let block = 0; block < 6; block++) { const mods = new Set(DISC_TIERS.slice(block * 5, block * 5 + 5).flatMap((t) => [...t.modifiers, ...t.enemies.map((e) => e.type)])); const fresh = [...mods].filter((m) => !seen.has(m)); expect(fresh.length, `block ${block}`).toBeGreaterThan(0); mods.forEach((m) => seen.add(m)); }
+    for (let i = 5; i < 31; i += 5) expect(DISC_TIERS[i].environment).not.toBe(DISC_TIERS[i - 1].environment);
+    for (const t of DISC_TIERS) expect(t.environment, `tier ${t.id}`).toBeTruthy();
+    const seen = new Set<string>(); for (let block = 0; block < 7; block++) { const mods = new Set(DISC_TIERS.slice(block * 5, block === 6 ? 36 : block * 5 + 5).flatMap((t) => [...t.modifiers, ...t.enemies.map((e) => e.type)])); const fresh = [...mods].filter((m) => !seen.has(m)); expect(fresh.length, `block ${block}`).toBeGreaterThan(0); mods.forEach((m) => seen.add(m)); }
   });
 });
 
@@ -43,8 +48,8 @@ describe('scoring', () => {
 describe('unlock progression', () => {
   it('opens tiers one at a time and unlocks endless after the last tier', () => {
     const s = defaultSave(); expect(unlockedCount(s, 'discs')).toBe(1); expect(endlessUnlocked(s, 'discs')).toBe(false);
-    for (let i = 0; i < 29; i++) { s.completed[tierKey(DISC_TIERS[i])] = { best: 1, difficulty: 'standard', time: 1, clears: 1, scoring: 1 }; expect(unlockedCount(s, 'discs')).toBe(i + 2); }
-    s.completed[tierKey(DISC_TIERS[29])] = { best: 1, difficulty: 'master', time: 1, clears: 1, scoring: 1 }; expect(endlessUnlocked(s, 'discs')).toBe(true);
+    for (let i = 0; i < DISC_TIERS.length - 1; i++) { s.completed[tierKey(DISC_TIERS[i])] = { best: 1, difficulty: 'standard', time: 1, clears: 1, scoring: 1 }; expect(unlockedCount(s, 'discs')).toBe(i + 2); }
+    s.completed[tierKey(DISC_TIERS[DISC_TIERS.length - 1])] = { best: 1, difficulty: 'master', time: 1, clears: 1, scoring: 1 }; expect(endlessUnlocked(s, 'discs')).toBe(true);
     expect(ACHIEVEMENTS.find((a) => a.id === 'disc-30')!.test(s)).toBe(true); expect(ACHIEVEMENTS.find((a) => a.id === 'master')!.test(s)).toBe(true);
   });
   it('combat and racing keep independent progress', () => {

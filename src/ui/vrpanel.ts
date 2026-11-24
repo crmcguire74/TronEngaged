@@ -87,7 +87,7 @@ export class VRPanels {
   }
   /** Home screen: the same two game cards and link row as the desktop menu. */
   private home(c: CanvasRenderingContext2D, s: NonNullable<Menu['screen']>) {
-    const m = this.menu, all = m.all; c.fillStyle = '#f4fbff'; c.font = '700 60px "Syncopate", sans-serif'; c.fillText('VANTA', 48, 44); const w = c.measureText('VANTA ').width; c.fillStyle = '#4fe3ff'; c.fillText('ARC', 48 + w, 44);
+    const m = this.menu, all = m.all; c.fillStyle = '#f4fbff'; c.font = '700 60px "Syncopate", sans-serif'; c.fillText('TRON', 48, 44); const w = c.measureText('TRON ').width; c.fillStyle = '#4fe3ff'; c.fillText('ENGAGED', 48 + w, 44);
     c.fillStyle = '#8fa6bd'; c.font = '26px "Share Tech Mono", monospace'; c.fillText('CHOOSE A GAME  ·  POINT AND PULL THE TRIGGER', 48, 126);
     const cards = all.filter((x) => x.kind === 'button' && x.card), cw = (W - 96 - 28) / 2, ch = 470, cy = 190;
     all.forEach((it, i) => {
