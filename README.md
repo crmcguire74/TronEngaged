@@ -15,6 +15,19 @@ and in VR (WebXR):
 > models as its hero art. Third-party models and audio, and the licence each one carries, are listed in `CREDITS.md`;
 > anything whose licence does not allow redistribution in a build is held in `assets/` and never shipped.
 
+## Where it runs
+
+Production is the Netlify site `tronengaged`, served at **https://tronengaged.paguire.com** (the original
+`tronengaged.netlify.app` redirects there once that domain is set primary). `main` is what deploys.
+
+The build sets `base: './'` in `vite.config.ts`, so every asset URL is relative and the game runs from any host or
+subpath without a rebuild. Cache headers are in `netlify.toml`.
+
+> Progress is held in IndexedDB under the database `tron-engaged`, which the browser keys to the **origin**. Moving
+> the game to a different hostname therefore starts every player from tier 1, and nothing client-side can carry a
+> save across origins. Pick one canonical URL and redirect the other to it rather than leaving two live, or players
+> end up with two separate save files depending on which link they followed.
+
 ## Run
 
 ```bash
