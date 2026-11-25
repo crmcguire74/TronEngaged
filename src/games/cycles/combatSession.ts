@@ -161,8 +161,9 @@ export class CombatSession extends BaseSession {
       case 'crash': {
         audio.sfx('crash', e); const [dx, dz] = DIRS[e.dir]; vfx.shatter(e.x, 0, e.z, col, 120, 1.3, { x: dx * 0.6, z: dz * 0.6 }, 9 + e.speed * 0.15); vfx.ring(e.x, 0.1, e.z, col, 0.5, 14, 0.7); const u = (this.floor.material as THREE.ShaderMaterial).uniforms.uPulse.value as THREE.Vector4; u.set(e.x, e.z, 0, 1);
         engine.addShake(e.player ? 1 : clamp(1 - Math.hypot(e.x - this.sim.player.x, e.z - this.sim.player.z) / 80, 0, 0.6));
-        // a rival you trapped: slow motion, and on a monitor the camera swings round the wreck (longer for the last one)
-        if (!e.player && e.by === this.sim.player.id) { const last = this.sim.aliveRivals() === 0; this.slowmo(this.xr ? 0.7 : last ? 1.6 : 1.1, this.xr ? 0.5 : last ? 0.18 : 0.25); this.killCam(e.x, 0, e.z, last ? 1.7 : 1.2); xr.pulse('both', 0.8, 180); }
+        // a rival you trapped: a short, light slow-down while play goes on, with the camera left on the player. Only the
+        // last rival, when the round is already won and nothing is left to steer round, gets the camera swing.
+        if (!e.player && e.by === this.sim.player.id) { const last = this.sim.aliveRivals() === 0; if (last) { this.slowmo(this.xr ? 0.7 : 1.6, this.xr ? 0.5 : 0.18); this.killCam(e.x, 0, e.z, 1.7); } else this.slowmo(0.5, 0.6); xr.pulse('both', 0.8, 180); }
         if (e.player) { this.lastCrash = e.kind; hud.flash('hurt'); xr.pulse('both', 1, 400); input.rumble(1, 1, 500); } else { this.crowd?.excite(1.2); audio.cheer(e.by === 1 ? 1 : 0.5); hud.toast(e.by === 1 && e.kind === 'trail' ? 'TRAPPED  +400' : 'RIVAL DOWN  +150', 'score'); }
         break;
       }

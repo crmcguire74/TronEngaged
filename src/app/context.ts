@@ -37,7 +37,10 @@ export abstract class BaseSession {
    * but the view never moves (time dilation is comfortable; a camera the player did not move is not).
    */
   slowmo(dur: number, min: number) { if (this.kcSlowT > 0 && this.kcSlowMin <= min) return; this.kcSlowT = this.kcSlowDur = dur; this.kcSlowMin = min; }
-  /** Desktop kill-cam: for `dur` seconds the camera swings round the point where a rival fell, then hands back. */
+  /**
+   * Desktop kill-cam: for `dur` seconds the camera swings round the point where a rival fell, then hands back. Only for
+   * a moment that ends the round: during live play the camera always stays with the player.
+   */
   killCam(x: number, y: number, z: number, dur = 1.3) { if (this.xr) return; this.kc = { x, y, z, t: 0, dur, a0: Math.atan2(this.ctx.engine.camera.position.x - x, this.ctx.engine.camera.position.z - z) }; }
   /** Call at the end of view(), after the session has placed its own camera: blends the kill-cam over it. */
   protected applyKillCam(dt: number) {

@@ -191,8 +191,9 @@ export class RaceSession extends BaseSession {
         vfx.derez(e.x, e.y, e.z, col, { height: 1.5, count: mine ? 420 : 260, power: mine ? 11 : 9, floorR: this.sim.track.width / 2, big: mineKill || mine });
         if (mine) { this.downCam = 0; hud.banner('DEREZZED', 'You rode into a light wall — re-forming', 1500); audio.say('Derezzed.'); engine.addShake(1); engine.derez = 0.45; xr.pulse('both', 1, 400); input.rumble(1, 1, 450); }
         else if (e.cause === 'wall' && e.by !== this.sim.player.id && this.sim.racers[e.id - 1].progress > this.sim.player.progress - 3) hud.toast('RIVAL DEREZZED', 'info'); audio.sfx('shatter', e); audio.sfx('explosion', e);
-        // the takedown is the moment of the race: the world drops into slow motion and (on a monitor) the camera swings round the wreck
-        if (mineKill) { this.slowmo(this.xr ? 0.7 : 1.2, this.xr ? 0.5 : 0.22); this.killCam(e.x, e.y, e.z, 1.3); }
+        // a takedown mid-race never takes the camera: the player is still steering at speed. It gets a short, light
+        // slow-down (control stays usable) on top of the banner, sound and rumble below.
+        if (mineKill) this.slowmo(0.55, 0.6);
         if (mineKill) { this.kills++; hud.banner('TAKEDOWN', e.cause === 'wall' ? 'A rival derezzed on your light wall' : 'A rival was thrown off the road', 1700); hud.toast('TAKEDOWN  +220', 'score'); audio.say('Trap confirmed.'); audio.cheer(1.2); xr.pulse('both', 0.9, 160); input.rumble(0.8, 0.8, 200); engine.addShake(0.4); }
         break;
       }
@@ -203,7 +204,7 @@ export class RaceSession extends BaseSession {
         vfx.sparks(e.x, e.y + 0.6, e.z, 0xffffff, 34 + Math.round(f * 50), 11 + f * 10, 0.5 + f * 0.3);
         vfx.ring(e.x, e.y + 0.3, e.z, 0xffffff, 0.35, 4 + f * 3, 0.35);
         audio.sfx('crash', e.player ? undefined : e);
-        if (e.by === this.sim.player.id) { if (f > 0.75) this.slowmo(0.45, 0.45); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
+        if (e.by === this.sim.player.id) { if (f > 0.75) this.slowmo(0.35, 0.7); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
         else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.addShake(0.6 + f * 0.6); xr.pulse('both', 1, 200); input.rumble(1, 1, 260); }
         break;
       }
