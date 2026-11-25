@@ -440,29 +440,46 @@ function accentTint(root: THREE.Object3D, color: number, power: { value: number 
 let gt: THREE.Texture | null = null;
 function glowTex() { if (gt) return gt; const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!, g = x.createRadialGradient(32, 32, 2, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); gt = new THREE.CanvasTexture(c); gt.userData.shared = true; return gt; }
 
-const MAX_SEG = 640, WALL_H = 1.55;
-/** Hardlight wall built as one strip mesh per rider (never one mesh per segment). */
+const MAX_SEG = 640, WALL_H = 1.55, CAP_W = 0.16, FLOOR_W = 0.7, VPS = 12; // vertices per segment: face, top cap, floor strip
+/**
+ * Hardlight wall built as one strip mesh per rider (never one mesh per segment). Each segment is three quads: the
+ * vertical face, a lit cap along its top and a glowing strip on the floor at its foot. The face alone has no
+ * thickness, so a wall running straight away from the camera (the one you are laying, seen from the chase camera or the
+ * seat) was edge-on and invisible until you turned; the cap and the floor strip face up and always read.
+ */
 export class WallTrail {
-  readonly mesh: THREE.Mesh; private pos = new Float32Array(MAX_SEG * 4 * 3); private uv = new Float32Array(MAX_SEG * 4 * 2); private built = -1; readonly mat: THREE.ShaderMaterial;
+  readonly mesh: THREE.Mesh; private pos = new Float32Array(MAX_SEG * VPS * 3); private uv = new Float32Array(MAX_SEG * VPS * 2); private built = -1; private uBuilt = 0; readonly mat: THREE.ShaderMaterial;
   constructor(color: number) {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage)); g.setAttribute('uv', new THREE.BufferAttribute(this.uv, 2).setUsage(THREE.DynamicDrawUsage));
-    const idx = new Uint16Array(MAX_SEG * 6); for (let i = 0; i < MAX_SEG; i++) { const a = i * 4; idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6); } g.setIndex(new THREE.BufferAttribute(idx, 1)); g.setDrawRange(0, 0);
+    const idx = new Uint16Array(MAX_SEG * 18); for (let i = 0; i < MAX_SEG; i++) for (let k = 0; k < 3; k++) { const a = i * VPS + k * 4; idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 18 + k * 6); }
+    g.setIndex(new THREE.BufferAttribute(idx, 1)); g.setDrawRange(0, 0);
     this.mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, uniforms: { uColor: { value: new THREE.Color(color) }, uOpacity: { value: 1 }, uTime: { value: 0 } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform vec3 uColor; uniform float uOpacity, uTime; varying vec2 vUv; void main(){ float top = smoothstep(0.86, 1.0, vUv.y), base = 1.0 - smoothstep(0.0, 0.14, vUv.y); float stripe = 0.5 + 0.5 * sin(vUv.x * 1.6 - uTime * 5.0); float body = 0.56 + 0.16 * vUv.y + 0.06 * stripe; float a = (body + top * 0.6 + base * 0.35) * uOpacity; gl_FragColor = vec4(uColor * (0.9 + top * 2.6 + base * 1.2 + 0.2 * stripe), a); ${TONE} }` });
+      // uv.y: 0 at the foot and 1 at the top of the face; the cap is drawn at 1 (brightest) and the floor strip at -1 (a
+      // soft glow that fades across its width)
+      fragmentShader: `uniform vec3 uColor; uniform float uOpacity, uTime; varying vec2 vUv; void main(){
+        if (vUv.y < -0.5) { gl_FragColor = vec4(uColor * 1.4, 0.55 * uOpacity); ${TONE} return; }
+        float top = smoothstep(0.86, 1.0, vUv.y), base = 1.0 - smoothstep(0.0, 0.14, vUv.y); float stripe = 0.5 + 0.5 * sin(vUv.x * 1.6 - uTime * 5.0); float body = 0.56 + 0.16 * vUv.y + 0.06 * stripe; float a = min(1.0, (body + top * 0.6 + base * 0.35) * uOpacity); gl_FragColor = vec4(uColor * (0.9 + top * 2.6 + base * 1.2 + 0.2 * stripe), a); ${TONE} }` });
     this.mesh = new THREE.Mesh(g, this.mat); this.mesh.frustumCulled = false;
   }
+  private quad(v: number, a: number[], b: number[], c: number[], d: number[], ua: [number, number], ub: [number, number], uc: [number, number], ud: [number, number]) {
+    const p = this.pos, uv = this.uv; [a, b, c, d].forEach((q, k) => p.set(q, (v + k) * 3)); [ua, ub, uc, ud].forEach((q, k) => uv.set(q, (v + k) * 2));
+  }
   private seg(i: number, ax: number, az: number, bx: number, bz: number, u0: number) {
-    const o = i * 12, len = Math.hypot(bx - ax, bz - az), p = this.pos, uv = this.uv, q = i * 8;
-    p[o] = ax; p[o + 1] = 0; p[o + 2] = az; p[o + 3] = ax; p[o + 4] = WALL_H; p[o + 5] = az; p[o + 6] = bx; p[o + 7] = 0; p[o + 8] = bz; p[o + 9] = bx; p[o + 10] = WALL_H; p[o + 11] = bz;
-    uv[q] = u0; uv[q + 1] = 0; uv[q + 2] = u0; uv[q + 3] = 1; uv[q + 4] = u0 + len; uv[q + 5] = 0; uv[q + 6] = u0 + len; uv[q + 7] = 1; return u0 + len;
+    const len = Math.hypot(bx - ax, bz - az), v = i * VPS, u1 = u0 + len;
+    // across the segment (a zero-length head segment at the start of a run falls back to a fixed axis)
+    const nx = len > 1e-4 ? -(bz - az) / len : 1, nz = len > 1e-4 ? (bx - ax) / len : 0, cw = CAP_W / 2, fw = FLOOR_W / 2, fy = 0.02;
+    this.quad(v, [ax, 0, az], [ax, WALL_H, az], [bx, 0, bz], [bx, WALL_H, bz], [u0, 0], [u0, 1], [u1, 0], [u1, 1]);
+    this.quad(v + 4, [ax - nx * cw, WALL_H, az - nz * cw], [ax + nx * cw, WALL_H, az + nz * cw], [bx - nx * cw, WALL_H, bz - nz * cw], [bx + nx * cw, WALL_H, bz + nz * cw], [u0, 1], [u0, 1], [u1, 1], [u1, 1]);
+    this.quad(v + 8, [ax - nx * fw, fy, az - nz * fw], [ax + nx * fw, fy, az + nz * fw], [bx - nx * fw, fy, bz - nz * fw], [bx + nx * fw, fy, bz + nz * fw], [u0, -1], [u0, -1], [u1, -1], [u1, -1]);
+    return u1;
   }
   /** pts: flat trail vertices; (hx,hz): current head position. Only the live segment is rewritten each frame. */
   update(pts: number[], hx: number, hz: number, t: number) {
     const n = Math.min(MAX_SEG, pts.length / 2); let u = 0;
-    if (n !== this.built) { for (let i = 0; i < n - 1; i++) u = this.seg(i, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], u); this.built = n; (this as any)._u = u; } else u = (this as any)._u ?? 0;
+    if (n !== this.built) { for (let i = 0; i < n - 1; i++) u = this.seg(i, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], u); this.built = n; this.uBuilt = u; } else u = this.uBuilt;
     if (n > 0) this.seg(n - 1, pts[(n - 1) * 2], pts[(n - 1) * 2 + 1], hx, hz, u);
-    const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.uv.needsUpdate = true; g.setDrawRange(0, n * 6); this.mat.uniforms.uTime.value = t;
+    const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.uv.needsUpdate = true; g.setDrawRange(0, n * 18); this.mat.uniforms.uTime.value = t;
   }
 }
 
