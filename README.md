@@ -145,6 +145,9 @@ A standalone headset draws every frame twice. What keeps it inside budget, and w
   frame-time governor in `App.govern` that pulls LOD distances in, thins particles and raises foveation when frames
   run long, then eases back.
 - Distance LODs for rival machines (30 m) and riders (42 m) in `CycleView.pose`, scaled by `engine.lodScale`.
+- Draw calls: `scripts/build-lods.mjs` merges every static part that shares a material (Moto 54 draws to 4, the
+  Recognizer 50 to 2). Animated parts stay separate on full-detail machines; the LOD copies are frozen in their driving
+  pose and fully merged, so a distant rival costs one draw per material (8-9) instead of 21-25.
 - Skinned meshes are frustum-culled with padded rest-pose bounds (`cullSkinned` in `src/engine/assets.ts`).
 - Shaders are prewarmed at load (`App.prewarm`), so nothing compiles mid-race.
 - Ambient sky traffic and beacons (`src/engine/ambient.ts`) are one instanced draw each, animated on the GPU.
