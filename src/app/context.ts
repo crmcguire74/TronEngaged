@@ -29,8 +29,27 @@ export abstract class BaseSession {
   constructor(readonly ctx: Ctx, readonly tier: TierDefinition, readonly diff: DifficultyId) {}
   get xr() { return this.ctx.xr.presenting; }
 
+  // ---------------------------------------------------------------- kill-cam
+  private kcSlowT = 0; private kcSlowDur = 0; private kcSlowMin = 1; private kc: { x: number; y: number; z: number; t: number; dur: number; a0: number } | null = null;
+  private kcV = new THREE.Vector3(); private kcL = new THREE.Vector3(); private kcD = new THREE.Vector3();
+  /**
+   * A beat of slow motion that holds, then eases back to full speed over its second half. In a headset the world slows
+   * but the view never moves (time dilation is comfortable; a camera the player did not move is not).
+   */
+  slowmo(dur: number, min: number) { if (this.kcSlowT > 0 && this.kcSlowMin <= min) return; this.kcSlowT = this.kcSlowDur = dur; this.kcSlowMin = min; }
+  /** Desktop kill-cam: for `dur` seconds the camera swings round the point where a rival fell, then hands back. */
+  killCam(x: number, y: number, z: number, dur = 1.3) { if (this.xr) return; this.kc = { x, y, z, t: 0, dur, a0: Math.atan2(this.ctx.engine.camera.position.x - x, this.ctx.engine.camera.position.z - z) }; }
+  /** Call at the end of view(), after the session has placed its own camera: blends the kill-cam over it. */
+  protected applyKillCam(dt: number) {
+    const kc = this.kc; if (!kc) return; kc.t += dt; const k = kc.t / kc.dur; if (k >= 1 || this.xr) { this.kc = null; return; }
+    const sm = (v: number) => { const c = Math.min(1, Math.max(0, v)); return c * c * (3 - 2 * c); }, w = sm(k / 0.14) * (1 - sm((k - 0.72) / 0.28));
+    const cam = this.ctx.engine.camera; cam.getWorldDirection(this.kcD); this.kcL.copy(cam.position).addScaledVector(this.kcD, 10);
+    const a = kc.a0 + 0.35 + k * 0.9, r = 6.5 - k * 1.5; this.kcV.set(kc.x + Math.sin(a) * r, kc.y + 2 + k * 0.6, kc.z + Math.cos(a) * r);
+    cam.position.lerp(this.kcV, w); cam.lookAt(this.kcL.lerp(this.kcV.set(kc.x, kc.y + 0.8, kc.z), w));
+  }
   update(dt: number, a: Actions) {
     this.t += dt;
+    if (this.kcSlowT > 0) { this.kcSlowT -= dt; const k = 1 - this.kcSlowT / this.kcSlowDur, e = Math.min(1, Math.max(0, (k - 0.5) / 0.5)); this.timeScale = this.kcSlowT <= 0 ? 1 : this.kcSlowMin + (1 - this.kcSlowMin) * e * e * (3 - 2 * e); }
     if (this.phase === 'intro') {
       const k = Math.min(1, this.t / this.introDur); this.intro(k, dt);
       if (k >= 1 || (this.t > 0.5 && (a.confirm || a.jump))) { this.phase = 'countdown'; this.t = 0; this.lastCount = 4; this.intro(1, dt); this.onCountdown(); this.ctx.audio.vo('ready'); }

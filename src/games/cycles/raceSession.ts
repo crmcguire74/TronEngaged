@@ -191,6 +191,8 @@ export class RaceSession extends BaseSession {
         vfx.derez(e.x, e.y, e.z, col, { height: 1.5, count: mine ? 420 : 260, power: mine ? 11 : 9, floorR: this.sim.track.width / 2, big: mineKill || mine });
         if (mine) { this.downCam = 0; hud.banner('DEREZZED', 'You rode into a light wall — re-forming', 1500); audio.say('Derezzed.'); engine.addShake(1); engine.derez = 0.45; xr.pulse('both', 1, 400); input.rumble(1, 1, 450); }
         else if (e.cause === 'wall' && e.by !== this.sim.player.id && this.sim.racers[e.id - 1].progress > this.sim.player.progress - 3) hud.toast('RIVAL DEREZZED', 'info'); audio.sfx('shatter', e); audio.sfx('explosion', e);
+        // the takedown is the moment of the race: the world drops into slow motion and (on a monitor) the camera swings round the wreck
+        if (mineKill) { this.slowmo(this.xr ? 0.7 : 1.2, this.xr ? 0.5 : 0.22); this.killCam(e.x, e.y, e.z, 1.3); }
         if (mineKill) { this.kills++; hud.banner('TAKEDOWN', e.cause === 'wall' ? 'A rival derezzed on your light wall' : 'A rival was thrown off the road', 1700); hud.toast('TAKEDOWN  +220', 'score'); audio.say('Trap confirmed.'); audio.cheer(1.2); xr.pulse('both', 0.9, 160); input.rumble(0.8, 0.8, 200); engine.addShake(0.4); }
         break;
       }
@@ -201,7 +203,7 @@ export class RaceSession extends BaseSession {
         vfx.sparks(e.x, e.y + 0.6, e.z, 0xffffff, 34 + Math.round(f * 50), 11 + f * 10, 0.5 + f * 0.3);
         vfx.ring(e.x, e.y + 0.3, e.z, 0xffffff, 0.35, 4 + f * 3, 0.35);
         audio.sfx('crash', e.player ? undefined : e);
-        if (e.by === this.sim.player.id) { hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
+        if (e.by === this.sim.player.id) { if (f > 0.75) this.slowmo(0.45, 0.45); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
         else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.addShake(0.6 + f * 0.6); xr.pulse('both', 1, 200); input.rumble(1, 1, 260); }
         break;
       }
@@ -318,7 +320,7 @@ export class RaceSession extends BaseSession {
     const tgt = sim.racers[0]; const data: Record<string, any> = { tier: this.tier, speed: P.speed, boost: P.boost, boosting: P.boosting, drift: P.drifting, draft: P.draft, pulse: sim.lightwalls ? P.wallCd : P.pulseCd, abilityName: sim.lightwalls ? 'LIGHT WALL' : 'PULSE', abilityKey: ctl(dev, 'E', 'B', xr.labels.ability), wallOn: sim.lightwalls ? P.wallT : 0, wallLay: WALL_LAY, wallMax: sim.lightwalls ? WALL_COOLDOWN : 0, takedowns: this.kills, place: P.place, field: active, active, solo, time: sim.time, best: sim.stats.bestLap, par: this.format === 'timetrial' ? sim.parTime : 0, score: 0, format: FORMAT_LABEL[this.format], storm: this.storm,
       lapLabel: T.closed ? `LAP ${clamp(P.lap + 1, 1, laps)}/${laps}` : `${Math.round((P.idx / T.n) * 100)}%`, radar: this.radarFn ??= () => { const sim = this.sim, T = sim.track; return { kind: 'track', pts: this.radarPts, closed: T.closed, extent: this.ext.r, cx: this.ext.cx, cz: this.ext.cz, hazards: sim.hazards, walls: sim.walls.length ? sim.walls.filter((_, i) => i % 2 === 0).map((w) => ({ x0: w.x0, z0: w.z0, x1: w.x1, z1: w.z1, color: css(this.colors[w.owner - 1]) })) : null, racers: sim.racers.map((r, i) => ({ x: r.x, z: r.z, h: r.h, color: css(this.colors[i]), player: r.isPlayer, out: r.out || r.downT > 0 })) }; } };
     if (this.format === 'gauntlet') data.integrity = P.integrity; if (this.format === 'elimination' && this.phase === 'play') data.elim = sim.elimT; if (this.format === 'pursuit' && !tgt.out) data.gap = Math.max(0, Math.round((tgt.progress - P.progress) * T.step));
-    hud.update(data);
+    hud.update(data); this.applyKillCam(dt);
   }
   private radarFn: (() => any) | null = null; private ambient!: Ambient;
   dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
