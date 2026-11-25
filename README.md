@@ -110,6 +110,7 @@ These models are built by Blender scripts (shared helpers in `scripts/blender/ki
 | `build_cockpit.py`, `build_cockpit_v2.py`, `build_cockpit_v3.py` | earlier cockpits, kept as fallbacks |
 | `build_hauler.py` | `hauler.glb` — the Overwatch Hauler that stands over the Outlands events |
 | `build_arena_kit.py` | `arena-stand.glb`, `arena-pylon.glb` — the stadium around the cycle grid |
+| `build_start_gantry.py` | `start-gantry.glb` — race start and finish: raked blade pylons and a wedge beam carrying twelve start lamps, which run red through the countdown and flash green on GO. About 1.6k triangles, scaled to each track's width |
 | `build_cycles.py` | `cycle-bulwark.glb` — ring-wheel rival cycle (`cycle-lancer.glb` is also built but no longer shipped) |
 
 The scripts run either inside Blender or against the `bpy` module, which is the quicker path in CI:
@@ -148,10 +149,14 @@ A standalone headset draws every frame twice. What keeps it inside budget, and w
 - Eye buffer at the runtime default on Medium (`setFramebufferScaleFactor`, `src/engine/xr.ts`), 72 Hz lock, and a
   frame-time governor in `App.govern` that pulls LOD distances in, thins particles and raises foveation when frames
   run long, then eases back.
-- Distance LODs for rival machines (30 m) and riders (42 m) in `CycleView.pose`, scaled by `engine.lodScale`.
+- Distance LODs for rival machines (30 m) and riders in `CycleView.pose`, scaled by `engine.lodScale`: a rival rider
+  uses a 16-19k triangle copy up close, a 6-7k copy past 15 m (`*.lod2.glb`), and drops out past 42 m.
 - Draw calls: `scripts/build-lods.mjs` merges every static part that shares a material (Moto 54 draws to 4, the
   Recognizer 50 to 2). Animated parts stay separate on full-detail machines; the LOD copies are frozen in their driving
   pose and fully merged, so a distant rival costs one draw per material (8-9) instead of 21-25.
+- Static set pieces (bridge spans, city canyons, race gates, combat ramps, arrows, decks and lane posts) are merged
+  into one draw per material at load by `mergeStatic` (`src/engine/merge.ts`). Race tier 20 went from 270 draws to
+  184, combat tier 35 from 296 to 221.
 - Skinned meshes are frustum-culled with padded rest-pose bounds (`cullSkinned` in `src/engine/assets.ts`).
 - Shaders are prewarmed at load (`App.prewarm`), so nothing compiles mid-race.
 - Ambient sky traffic and beacons (`src/engine/ambient.ts`) are one instanced draw each, animated on the GPU.

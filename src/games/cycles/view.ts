@@ -34,7 +34,7 @@ const SEAT: Record<string, [number, number, number]> = { blade: [0, -0.11, -0.16
 /** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
 const RIDER: Record<string, string> = { blade: 'char:azure', azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson', agile: 'char:ivory', flynn: 'char:cobalt' };
 // rivals bring their light copies (machine and rider); the player's own machine never needs one
-export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m, i) => ['cycle:' + m, RIDER[m], ...(i > 0 ? ['lod:' + m, RIDER[m] && 'lod' + RIDER[m]] : [])]).concat(['char:' + skin, COCKPIT, 'hands']).filter((k): k is string => !!k && (!k.startsWith('lod:') || LOD_MODELS.has(k.slice(4)))))];
+export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m, i) => ['cycle:' + m, RIDER[m], ...(i > 0 ? ['lod:' + m, RIDER[m] && 'lod' + RIDER[m], RIDER[m] && 'lod2' + RIDER[m]] : [])]).concat(['char:' + skin, COCKPIT, 'hands']).filter((k): k is string => !!k && (!k.startsWith('lod:') || LOD_MODELS.has(k.slice(4)))))];
 const LOD_MODELS = new Set(['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet']);
 /** The cockpit model the first-person view is built from (scripts/blender/build_cockpit_v5.py). */
 const COCKPIT = 'cockpit5';
@@ -119,7 +119,7 @@ export class CycleView {
   private yoke: THREE.Object3D | null = null; private canopy: THREE.Object3D | null = null; private canopyK = 0; private canopyTarget = 0; private sealAt = -9; private canopyMoving = false; private lamps: THREE.MeshBasicMaterial[] = []; private lampCol = new THREE.Color();
   private gauges: HoloGauge[] = []; private dialV = [0, 0]; private rings: THREE.Object3D[] = [];
   /** Distance LOD: a geometry-only low-detail copy sharing this machine's materials, and the rider dropped when far. */
-  private lod: Instance | null = null; private lodOn = false; private riderFar = false; private riderWanted = true;
+  private lod: Instance | null = null; private lodOn = false; private riderFar = false; private riderWanted = true; /** a far rival's much lighter rider, swapped in past ~15 m */ private riderLo: Instance | null = null; private riderLoOn = false;
   /** Ignition sweep state (see buildMaterials). `built` turns true when the machine is whole. */
   readonly buildU: BuildUniforms = { uBO: { value: new THREE.Vector3() }, uBR: { value: BUILT }, uBW: { value: 0.9 } }; private buildT = -1; built = true; private batonObj: THREE.Object3D | null = null;
   /** The machine's own bounds (root space), for the light guides and for how far the build front must travel. */ private box = new THREE.Box3(); private buildMax = 4;
@@ -151,7 +151,9 @@ export class CycleView {
       l.root.position.copy(this.inst.root.position); l.root.rotation.copy(this.inst.root.rotation); l.root.scale.copy(this.inst.root.scale); l.root.visible = false; l.play('Drive', 0); this.body.add(l.root);
     }
     const rk = riderKey ?? RIDER[model];
-    if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = ctx.assets.instance(riderKey ? rk : lodChar(ctx.assets, rk), { cloneMaterials: true }); revealMaterials(this.rider.root, this.reveal, new THREE.Color(color), riderKey ? 0 : 0.9); this.rider.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (this.inst.actions.CanopyClose) this.rider.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ else if (SEAT[model]) this.rider.root.position.set(...SEAT[model]); this.rider.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = this.rider.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(this.rider.root); }
+    // a seated rider is posed once and never animated again, so a far copy costs nothing but its own draw
+    const seat = (key: string) => { const r = ctx.assets.instance(key, { cloneMaterials: true }); revealMaterials(r.root, this.reveal, new THREE.Color(color), riderKey ? 0 : 0.9); r.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (this.inst.actions.CanopyClose) r.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ else if (SEAT[model]) r.root.position.set(...SEAT[model]); r.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = r.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(r.root); return r; };
+    if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = seat(riderKey ? rk : lodChar(ctx.assets, rk)); if (!riderKey && ctx.assets.has('lod2' + rk)) { this.riderLo = seat('lod2' + rk); this.riderLo.root.visible = false; } }
     // rivals read against a dark machine through a fresnel rim in their colour, computed in the rider's own shader: the
     // old back-face outline was a second skinned copy of every body, which doubled the riders' cost
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, map: glowTex() })); this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.03;
@@ -205,7 +207,7 @@ export class CycleView {
   /** Puts a baton in a hand (a bone of the walker, or a tracked glove in a headset). */
   holdBaton(parent: THREE.Object3D, worldScale = 1) { const b = baton(this.color); b.scale.setScalar(1 / worldScale); parent.add(b); this.batonObj = b; return b; }
   setRiderVisible(v: boolean) { this.riderWanted = v; this.syncRider(); }
-  private syncRider() { if (this.rider) this.rider.root.visible = this.riderWanted && !this.fp && this.mounted && !this.riderFar; }
+  private syncRider() { const on = this.riderWanted && !this.fp && this.mounted && !this.riderFar; if (this.rider) this.rider.root.visible = on && !this.riderLoOn; if (this.riderLo) this.riderLo.root.visible = on && this.riderLoOn; }
   /** Start sequence: the rider begins on foot, ahead of and beside the machine (call after the machine is posed). */
   dismount(side: number) {
     if (!this.rider || !this.riderKey || this.walker) return; this.mounted = false; this.syncRider();
@@ -394,7 +396,7 @@ export class CycleView {
     // distance LOD, measured from last frame's eye: the machine swaps to its light copy and the rider drops out
     const eng = this.ctx.engine, vp = eng.viewPos, d = Math.hypot(x - vp.x, y - vp.y, z - vp.z), k = eng.lodScale;
     const far = !!this.lod && !this.fp && d > (this.lodOn ? 26 : 30) * k; if (far !== this.lodOn) { this.lodOn = far; this.inst.root.visible = !far; this.lod!.root.visible = far; }
-    const rf = !this.fp && d > (this.riderFar ? 38 : 42) * k; if (rf !== this.riderFar) { this.riderFar = rf; this.syncRider(); }
+    const rf = !this.fp && d > (this.riderFar ? 38 : 42) * k, lo = !!this.riderLo && d > (this.riderLoOn ? 13 : 15) * k; if (rf !== this.riderFar || lo !== this.riderLoOn) { this.riderFar = rf; this.riderLoOn = lo; this.syncRider(); }
     (this.lodOn ? this.lod!.mixer : this.inst.mixer)?.update(dt);
   }
 }

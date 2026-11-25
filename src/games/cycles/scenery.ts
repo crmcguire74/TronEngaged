@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Rng } from '../../engine/math';
 import { TONE, type Theme } from '../../engine/env';
+import { mergeStatic } from '../../engine/merge';
 import { inFeature, surfaceY, wrapIdx, type Track, type TrackFeature } from './track';
 
 /**
@@ -160,8 +161,8 @@ export function buildScenery(t: Track, th: Theme, opts: SceneryOpts): { group: T
 
   for (const f of t.features) {
     if (f.kind === 'tunnel') G.add(tunnelShell(t, f, th, timed));
-    else if (f.kind === 'bridge') G.add(bridgeSpan(t, f, th, opts.groundY));
-    else if (f.kind === 'canyon' && !low) G.add(cityCanyon(t, f, th, opts.groundY, rng, timed));
+    else if (f.kind === 'bridge') G.add(mergeStatic(bridgeSpan(t, f, th, opts.groundY)));
+    else if (f.kind === 'canyon' && !low) G.add(mergeStatic(cityCanyon(t, f, th, opts.groundY, rng, timed)));
   }
 
   // light posts: paired masts along everything that is not a tunnel, skipped inside bridge spans where the towers lead

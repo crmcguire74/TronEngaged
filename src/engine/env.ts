@@ -149,10 +149,15 @@ export function boundaryWall(color: number, width: number, height: number): THRE
 }
 
 /** Emissive edge-lit dark block (pillars, structures): dark body plus luminous outline. */
+// Shared per colour: blocks that share materials can be merged into a single draw (see engine/merge.ts), and
+// nothing recolours a block's material in place.
+const EDGE_BODY = new Map<number, THREE.MeshStandardMaterial>(), EDGE_LINE = new Map<number, THREE.LineBasicMaterial>();
 export function edgeBlock(w: number, h: number, d: number, color: number, body = 0x070a10): THREE.Group {
   const g = new THREE.Group(); const geo = new THREE.BoxGeometry(w, h, d);
-  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: body, roughness: 0.35, metalness: 0.7 })));
-  const lines = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color })); (lines.material as THREE.LineBasicMaterial).color.multiplyScalar(2.2); g.add(lines);
+  let bm = EDGE_BODY.get(body); if (!bm) EDGE_BODY.set(body, (bm = new THREE.MeshStandardMaterial({ color: body, roughness: 0.35, metalness: 0.7 })));
+  let lm = EDGE_LINE.get(color); if (!lm) { EDGE_LINE.set(color, (lm = new THREE.LineBasicMaterial({ color }))); lm.color.multiplyScalar(2.2); }
+  g.add(new THREE.Mesh(geo, bm));
+  const lines = new THREE.LineSegments(new THREE.EdgesGeometry(geo), lm); g.add(lines);
   return g;
 }
 

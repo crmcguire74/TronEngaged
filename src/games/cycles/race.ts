@@ -39,7 +39,7 @@ export interface Racer {
   finished: boolean; finishT: number; out: boolean; integrity: number; slow: boolean; draft: boolean; intent: RaceIntent;
   /** Light-wall events: seconds of wall still to lay, cooldown, and where the last piece ended. */ wallT: number; wallCd: number; wx: number; wz: number;
   /** Ramming: time left as a shoved rider, and the sideways shove still carrying it. */ shoveT: number; shx: number; shz: number; /** grace after being walled or rammed, so a rider is never chain-stalled */ graceT: number;
-  /** Disc tiers: seconds until this rider can throw again. */ discCd: number;
+  /** Disc tiers: seconds until this rider can throw again. */ discCd: number; /** seconds until another contact can register as a fresh impact */ bumpCd: number;
   /** Taken down (derezzed on a wall or thrown off the road): seconds until this rider re-forms on the track. */ downT: number; /** Catch-up pacing: above 1 while a rival trails the player, a touch below while it leads. */ pace: number;
 }
 /** One piece of light wall laid behind a racer. It destroys rivals that ride into it and stuns the player. */
@@ -69,7 +69,7 @@ export class RaceSim {
   /** True in light-wall events: the ability lays a wall instead of firing a pulse. */ readonly lightwalls: boolean; walls: WallSeg[] = [];
   /** True where a rider at super speed can shove another off line; shoved into a rail or a wall, a rival is destroyed. */ readonly ramming: boolean;
   /** Disc tiers: discs in flight. */ flying: RaceDisc[] = []; readonly discsOn: boolean; private discId = 1;
-  /** Rivals share one throw timer, so the field takes turns: a disc at the player at most every 5 s (shorter on harder settings). */ private rivalDiscT = 8;
+  /** Rivals share one throw timer, so the field takes turns: a disc at the player at most every 5 s (shorter on harder settings). */ private rivalDiscT = 8; /** seconds between rival throws at the player before difficulty scaling; longer on the tiers that introduce discs */ private discGap = 5;
   racers: Racer[] = []; hazards: Hazard[] = []; pads: Pad[] = []; gates: ChargeGate[] = []; slows: SlowZone[] = []; events: SimEvent[] = [];
   /** Present on tiers with the 'interceptor' modifier. */ jet: Interceptor | null = null;
   time = 0; state: 'active' | 'won' | 'lost' = 'active'; checkpoints: number[] = []; parTime: number;
@@ -82,7 +82,7 @@ export class RaceSim {
     const hasJet = cfg.modifiers.includes('interceptor');
     // the interceptor drops light walls, so wall simulation is on for its events even where no rider carries one.
     // 'no-walls' turns them off for events that are meant to be a clean speed contest.
-    this.discsOn = cfg.modifiers.includes('discs');
+    this.discsOn = cfg.modifiers.includes('discs') || cfg.modifiers.includes('discs-lite'); this.discGap = cfg.modifiers.includes('discs-lite') ? 11 : 5;
     this.lightwalls = hasJet || (cfg.rivals.length > 0 && cfg.format !== 'timetrial' && cfg.format !== 'gauntlet' && !cfg.modifiers.includes('no-walls'));
     this.ramming = this.lightwalls && cfg.rivals.length > 0 && cfg.modifiers.includes('ramming');
     if (hasJet) this.jet = { idx: 0, d: 0, y: 0, x: 0, z: 0, target: 0, cd: 7, runT: 0, lead: 95 };
@@ -99,7 +99,7 @@ export class RaceSim {
       const veh = r ? { top: base.top * (0.88 + 0.12 * sk) * (cfg.format === 'pursuit' ? 0.95 : 1), accel: base.accel * (0.9 + 0.1 * sk), handling: base.handling } : base;
       const h = Math.atan2(t.tx[idx], t.tz[idx]);
       const lapOff = t.closed && idx > t.n / 2 && !(cfg.format === 'pursuit' && !isPlayer) ? -1 : 0;
-      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: OPENING_WALL_LOCK, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
+      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: OPENING_WALL_LOCK, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, bumpCd: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
     }
     this.player = this.racers[n - 1];
     const C = t.closed ? 4 : 5; for (let i = 1; i <= C; i++) this.checkpoints.push(Math.min(t.n - 2, Math.round((i * t.n) / (t.closed ? C : C + 0.02)) % (t.closed ? t.n : 1e9)));
@@ -132,7 +132,7 @@ export class RaceSim {
     this.time += dt; this.stats.time = this.time;
     this.updateHazards(); while (this.walls.length && this.walls[0].until < this.time) this.walls.shift();
     for (const g of this.gates) g.flash = Math.max(0, g.flash - dt);
-    for (const r of this.racers) { if (r.out) continue; if (r.downT > 0) { this.reform(r, dt); continue; } if (!r.isPlayer) this.drive(r, dt); this.stepRacer(r, r.isPlayer ? intent : r.intent, dt); }
+    for (const r of this.racers) { r.bumpCd = Math.max(0, r.bumpCd - dt); if (r.out) continue; if (r.downT > 0) { this.reform(r, dt); continue; } if (!r.isPlayer) this.drive(r, dt); this.stepRacer(r, r.isPlayer ? intent : r.intent, dt); }
     if (this.jet) this.stepJet(dt);
     if (this.discsOn) this.stepDiscs(dt);
     // rider contact
@@ -170,7 +170,7 @@ export class RaceSim {
    */
   private contact(a: Racer, b: Racer, nx: number, nz: number, push: number) {
     a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
-    // closing speed along the contact normal drives everything below
+    // closing speed along the contact normal drives the momentum exchange
     const rel = (a.vx - b.vx) * nx + (a.vz - b.vz) * nz;
     if (rel > 0) {
       // a mostly inelastic exchange: both are thrown apart sideways rather than passing through each other
@@ -180,28 +180,42 @@ export class RaceSim {
       const scrub = Math.min(0.15, rel * 0.013);
       a.vx *= 1 - scrub; a.vz *= 1 - scrub; b.vx *= 1 - scrub * 0.6; b.vz *= 1 - scrub * 0.6;
       a.speed = Math.hypot(a.vx, a.vz); b.speed = Math.hypot(b.vx, b.vz);
-      // a hard hit also knocks a rider off its line for a moment
       if (rel > 9) { const st = Math.min(0.45, rel * 0.03); a.stun = Math.max(a.stun, st * 0.4); b.stun = Math.max(b.stun, st); a.drifting = b.drifting = false; }
     }
-    const force = Math.max(0, rel);
-    if (a.isPlayer || b.isPlayer) this.events.push({ type: 'bump', x: (a.x + b.x) / 2, y: a.y, z: (a.z + b.z) / 2, force, hard: force > 7, mine: (a.isPlayer && rel > 0) || (b.isPlayer && rel > 0) });
+    // How hard each rider is driving into the other: its own velocity into the contact, a steer held toward the other
+    // machine, super speed, and any edge in pace. Two bikes side by side at the same speed meet with almost no closing
+    // speed, so the steer is what makes a deliberate lean-in count as a ram.
+    const da = this.ramDrive(a, b, nx, nz), db = this.ramDrive(b, a, -nx, -nz);
+    const P = this.player, involved = a === P || b === P;
+    // one impact per touch: overlapping riders are separated every step, and a sound 120 times a second is no sound
+    const fresh = a.bumpCd <= 0 && b.bumpCd <= 0; a.bumpCd = b.bumpCd = 0.3;
+    if (involved && fresh) { const force = Math.max(rel, 0) + Math.max(da, db) * 0.6; this.events.push({ type: 'bump', x: (a.x + b.x) / 2, y: a.y, z: (a.z + b.z) / 2, force, hard: force > 5, mine: (a === P ? da : db) >= (a === P ? db : da) }); }
     if (!this.ramming || this.time < 4) return;
     // only a side-on hit shoves: running into the back of someone slows you both, it does not throw them at a rail
     const t = this.track, i = a.idx, side = Math.abs(nx * -t.tz[i] + nz * t.tx[i]);
-    if (side < 0.55) return;
-    // whoever arrived faster does the shoving; super speed counts for an extra margin of its own
-    const da = a.speed - b.speed + (a.boosting ? 8 : 0) - (b.boosting ? 8 : 0);
-    // the player shoves from a 4 m/s edge; a rival needs 6 to shove the player, so rams reward the player's driving
-    // without turning the pack into bullies
-    const shover = da > 0 ? a : b; if (Math.abs(da) < (shover.isPlayer ? 4 : 6)) return;
-    if (da > 0) this.shunt(a, b, nx, nz, da); else this.shunt(b, a, -nx, -nz, -da);
+    if (side < 0.5) return;
+    const [s, v, f, sx, sz] = da >= db ? [a, b, da, nx, nz] as const : [b, a, db, -nx, -nz] as const;
+    // the player shoves from a light lean; a rival needs a real swerve to shove the player, so rams reward the player's
+    // driving without turning the pack into bullies
+    if (f < (s.isPlayer ? 2.2 : 6)) return;
+    this.shunt(s, v, sx, sz, f + Math.max(rel, 0));
+  }
+  /** How hard rider `s` is driving into rider `v`, which lies along (nx, nz) from it. */
+  private ramDrive(s: Racer, v: Racer, nx: number, nz: number) {
+    // speed across the track toward the other rider, measured on the road's own lateral axis so forward speed on a
+    // bend never reads as a sideways hit
+    const t = this.track, lx = -t.tz[s.idx], lz = t.tx[s.idx], toward = Math.sign(nx * lx + nz * lz) || 1;
+    const into = Math.max(0, (s.vx * lx + s.vz * lz) * toward - Math.max(0, (v.vx * lx + v.vz * lz) * -toward));
+    // positive steer turns right; the rider's right is (-cos h, sin h)
+    const lean = s.steer * (-Math.cos(s.h) * nx + Math.sin(s.h) * nz);
+    return into + Math.max(0, lean) * 5 + (s.boosting ? 6 : 0) + Math.max(0, s.speed - v.speed) * 0.5;
   }
 
   /** A faster rider shoves the one it hits bodily across the road, hard enough to put it into a rail. */
   private shunt(by: Racer, r: Racer, nx: number, nz: number, force: number) {
     if (r.shoveT > 0 || r.finished || r.graceT > 0) return; r.graceT = 4; const t = this.track, side = Math.sign(nx * -t.tz[r.idx] + nz * t.tx[r.idx]) || 1;
     // push straight across the track, toward whichever rail the contact points at, harder the bigger the mismatch
-    const p = Math.min(30, 13 + force * 0.95);
+    const p = Math.min(32, 16 + force * 1.1);
     r.shx = -t.tz[r.idx] * side * p; r.shz = t.tx[r.idx] * side * p; r.shoveT = 1.2 + Math.min(0.8, force * 0.06); r.stun = Math.max(r.stun, 0.5 + Math.min(0.4, force * 0.025)); r.drifting = false;
     by.speed *= 0.94; by.vx *= 0.94; by.vz *= 0.94; // the hit costs the rider that made it a little pace too
     this.events.push({ type: 'shunt', id: r.id, by: by.id, player: r.isPlayer, x: r.x, y: r.y, z: r.z, force });
@@ -277,7 +291,7 @@ export class RaceSim {
   }
   throwDisc(r: Racer) {
     if (r.discCd > 0 || r.finished || r.stun > 0.3 || r.downT > 0) return; const tg = this.discTarget(r); if (!r.isPlayer && !tg) return;
-    if (!r.isPlayer) { if (this.rivalDiscT > 0 || this.flying.some((d) => d.target === this.player.id)) return; this.rivalDiscT = 5 / Math.max(0.7, this.cfg.hazardMul); }
+    if (!r.isPlayer) { if (this.rivalDiscT > 0 || this.flying.some((d) => d.target === this.player.id)) return; this.rivalDiscT = this.discGap / Math.max(0.7, this.cfg.hazardMul); }
     r.discCd = r.isPlayer ? DISC_COOLDOWN : 7 + 4 * (1 - r.skill);
     const d: RaceDisc = { id: this.discId++, owner: r.id, target: tg?.id ?? 0, p: r.progress + 1.6 / this.track.step, d: r.d, v: Math.max(r.speed, 20) + 42, life: 2.4, x: r.x, y: r.y + 1, z: r.z };
     this.flying.push(d); this.events.push({ type: 'discThrow', id: r.id, disc: d.id, target: d.target, player: r.isPlayer, atPlayer: d.target === this.player.id, x: r.x, y: r.y + 1, z: r.z });

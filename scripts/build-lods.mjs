@@ -38,6 +38,10 @@ const JOBS = [
   ['characters/player/runner-azure.glb', 0.28, 0.008, null, true], ['characters/player/runner-cobalt.glb', 0.28, 0.008, null, true],
   ['characters/enemies/runner-ivory.glb', 0.28, 0.008, null, true], ['characters/bosses/runner-crimson.glb', 0.28, 0.008, null, true],
   ['environments/disc-arenas/pedestal.glb', 0.18, 0.004, 'Environments/pedestal.glb'],
+  // far riders: a rival 15-42 m off on its machine is a head and shoulders a few dozen pixels tall. A second, much
+  // lighter copy (about 4k triangles against 16-19k) takes over there; small parts are reduced too.
+  ['characters/player/runner-azure.glb', 0.08, 0.03, null, true, '.lod2.glb'], ['characters/player/runner-cobalt.glb', 0.08, 0.03, null, true, '.lod2.glb'],
+  ['characters/enemies/runner-ivory.glb', 0.08, 0.03, null, true, '.lod2.glb'], ['characters/bosses/runner-crimson.glb', 0.08, 0.03, null, true, '.lod2.glb'],
 ];
 
 // models whose parts are merged in place, before any LOD is built from them
@@ -55,7 +59,9 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 const tris = (doc) => { let n = 0; for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) { const i = p.getIndices(), a = p.getAttribute('POSITION'); n += (i ? i.getCount() : a.getCount()) / 3; } return Math.round(n); };
 
 const draws = (doc) => doc.getRoot().listNodes().reduce((n, nd) => n + (nd.getMesh()?.listPrimitives().length ?? 0), 0);
-for (const rel of MERGE) {
+// ONLY=<text>: run just the LOD jobs whose output name contains it, and skip the merge pass (npm run assets:lod -- with ONLY=lod2)
+const ONLY = process.env.ONLY;
+for (const rel of ONLY ? [] : MERGE) {
   const file = path.join(OUT, rel); if (!fs.existsSync(file)) { console.warn('missing', rel); continue; }
   const doc = await io.read(file), before = draws(doc);
   await doc.transform(dedup(), flatten(), join({ filter: (n) => !KEEP.test(n.getName()) }), prune({ keepAttributes: true, keepLeaves: true }));
@@ -63,7 +69,8 @@ for (const rel of MERGE) {
   console.log(`merge ${rel.padEnd(48)} ${String(before).padStart(3)} → ${String(after).padStart(3)} draws  ${(fs.statSync(file).size / 1024) | 0} KB`);
 }
 
-for (const [rel, ratio, error, inPlace, noClips] of JOBS) {
+for (const [rel, ratio, error, inPlace, noClips, suffix = '.lod.glb'] of JOBS) {
+  if (ONLY && !(inPlace ? rel : rel.replace(/\.glb$/, suffix)).includes(ONLY)) continue;
   const src = path.join(OUT, rel); if (!fs.existsSync(src)) { console.warn('missing', rel); continue; }
   // an in-place job always starts from the untouched file in assets/, so re-running the script never compounds the reduction
   const doc = await io.read(inPlace ? path.join(root, 'assets', inPlace) : src); const before = tris(doc);
@@ -71,7 +78,7 @@ for (const [rel, ratio, error, inPlace, noClips] of JOBS) {
   await doc.transform(weld());
   // small parts (light strips, trim, bolts) are left at full detail: collapsing them is what makes a distant machine
   // lose its outline, and they hold few triangles anyway. Only the big body shells are reduced.
-  for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) { const i = p.getIndices(); if ((i ? i.getCount() : p.getAttribute('POSITION').getCount()) / 3 < 1500) continue; simplifyPrimitive(p, { simplifier: MeshoptSimplifier, ratio, error, lockBorder: false }); }
+  for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) { const i = p.getIndices(); if ((i ? i.getCount() : p.getAttribute('POSITION').getCount()) / 3 < (suffix === '.lod.glb' ? 1500 : 300)) continue; simplifyPrimitive(p, { simplifier: MeshoptSimplifier, ratio, error, lockBorder: false }); }
   // LOD copies carry geometry only: at runtime they borrow the full model's (already re-tinted) materials by name, so
   // the textures are not downloaded twice
   // which materials actually sample a texture: parts of any other material lose their UVs below, so they can merge
@@ -94,6 +101,6 @@ for (const [rel, ratio, error, inPlace, noClips] of JOBS) {
     await doc.transform(flatten(), join(), prune({ keepAttributes: true, keepLeaves: true }));
   }
   await doc.transform(dedup(), prune({ keepAttributes: true, keepLeaves: true }));
-  const dst = inPlace ? src : src.replace(/\.glb$/, '.lod.glb'); await io.write(dst, doc);
+  const dst = inPlace ? src : src.replace(/\.glb$/, suffix); await io.write(dst, doc);
   console.log(`${rel.padEnd(44)} ${String(before).padStart(6)} → ${String(tris(doc)).padStart(6)} tris  ${String(draws(doc)).padStart(3)} draws  ${(fs.statSync(dst).size / 1024) | 0} KB  ${path.basename(dst)}`);
 }

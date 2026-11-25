@@ -43,6 +43,21 @@ describe('cycle combat rules', () => {
 });
 
 describe('racing', () => {
+  it('leaning into a rival alongside lands a ram on either side: one impact, a shunt, and a rail takedown', () => {
+    const tier = RACE_TIERS.find((t) => t.id === 6)!;
+    for (const steer of [1, -1]) {
+      const sim = new RaceSim(buildRaceConfig(tier, 'standard', 'blade')), P = sim.player, t = sim.track;
+      for (let i = 0; i < 120 * 6; i++) { sim.step(DT, { steer: 0, accel: 1, brake: 0, boost: false, ability: false }); sim.events.length = 0; }
+      const R = sim.racers.find((r) => !r.isPlayer && !r.out && r.downT <= 0)!; for (const o of sim.racers) if (o !== P && o !== R) o.out = true;
+      (sim as any).drive = (r: any) => { r.intent = { steer: 0, accel: 1, brake: 0, boost: false, ability: false }; };
+      P.x -= -t.tz[P.idx] * P.d; P.z -= t.tx[P.idx] * P.d; P.d = 0;
+      R.x = P.x - Math.cos(P.h) * steer * 2.6; R.z = P.z + Math.sin(P.h) * steer * 2.6; R.vx = P.vx; R.vz = P.vz; R.speed = P.speed; R.h = P.h; R.idx = P.idx; R.graceT = R.shoveT = 0;
+      const ev: any[] = []; for (let i = 0; i < 240; i++) { sim.step(DT, { steer, accel: 1, brake: 0, boost: false, ability: false }); ev.push(...sim.events); sim.events.length = 0; }
+      const bumps = ev.filter((e) => e.type === 'bump'); expect(bumps.length, `steer ${steer}`).toBeGreaterThanOrEqual(1); expect(bumps.length).toBeLessThan(4); expect(Math.max(...bumps.map((e) => e.force))).toBeGreaterThan(5);
+      expect(ev.some((e) => e.type === 'shunt' && e.by === P.id && e.id === R.id), `steer ${steer}`).toBe(true);
+      expect(ev.some((e) => e.type === 'takedown' && e.id === R.id && e.cause === 'rail')).toBe(true);
+    }
+  });
   it('every authored and staged track validates and keeps racers on the ribbon', () => {
     for (const t of RACE_TIERS) for (let stage = 0; stage < Number(t.params.stages ?? 1); stage++) { const cfg = buildRaceConfig(t, 'standard', 'azure', stage); expect(validateTrack(cfg.track), `tier ${t.id} stage ${stage}`).toEqual([]); }
   });

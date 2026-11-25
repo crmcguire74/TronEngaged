@@ -42,12 +42,14 @@ export function endlessTier(mode: GameMode, wave: number, runSeed: number): Tier
     const count = recovery ? 2 : Math.min(6, 2 + Math.floor(lap * 0.7) + (beat === 'squad' ? 2 : beat === 'elite' ? 1 : 0));
     const profiles = ['aggressor', 'container', 'opportunist', 'evader'];
     const enemies: EnemySpawn[] = []; for (let i = 0; i < count; i++) enemies.push({ type: beat === 'elite' && i === 0 ? 'champion' : beat === 'squad' ? 'container' : profiles[(i + wave) % (recovery ? 4 : 3)], count: 1, difficulty: skill });
-    return { ...base, mode, name: `Endless ${wave} · ${title(beat)}`, brief: recovery ? 'Recovery wave: fewer riders, open floor.' : 'Procedurally configured arena.', environment: COMBAT_ENVS[(lap + wave) % COMBAT_ENVS.length], enemies, modifiers: recovery ? [] : COMBAT_MODS[rng.int(0, Math.min(COMBAT_MODS.length - 1, 2 + lap))], objective: 'last-rider-standing',
+    return { ...base, mode, name: `Endless ${wave} · ${title(beat)}`, brief: recovery ? 'Recovery wave: fewer riders, open floor.' : 'Procedurally configured arena.', environment: COMBAT_ENVS[(lap + wave) % COMBAT_ENVS.length], enemies, modifiers: recovery ? [] : [...COMBAT_MODS[rng.int(0, Math.min(COMBAT_MODS.length - 1, 2 + lap))], ...(rng.chance(0.5) ? ['ramps'] : []), ...(rng.chance(lap === 0 ? 0.35 : 0.6) ? ['discs'] : [])], objective: 'last-rider-standing',
       params: { half: recovery ? 76 : beat === 'pressure' ? 54 : rng.int(62, 76), speed: Math.min(30, 25 + lap * 0.6), pillars: recovery ? 0 : rng.int(0, 5) } };
   }
   const format = recovery ? 'timetrial' : RACE_FORMATS[(wave + rng.int(0, 1)) % RACE_FORMATS.length];
   const mods: string[] = []; if (!recovery && lap > 0 && rng.chance(0.4)) mods.push('storm'); if (!recovery && lap > 1 && rng.chance(0.4)) mods.push('sweepers'); if (beat === 'elite') mods.push('aggressive');
   const solo = format === 'timetrial' || format === 'gauntlet';
+  // discs on most raced waves, gentle in the first lap of the cycle
+  if (!recovery && !solo && rng.chance(lap === 0 ? 0.5 : 0.75)) mods.push(lap === 0 ? 'discs-lite' : 'discs');
   return { ...base, mode, name: `Endless ${wave} · ${title(beat)}`, brief: `Seeded ${format} event.`, environment: RACE_ENVS[(lap + wave) % RACE_ENVS.length], enemies: [{ type: 'racer', count: solo ? 0 : format === 'pursuit' ? 1 : Math.min(7, 3 + Math.floor(lap * 0.8)), difficulty: skill }], modifiers: mods, objective: format,
     params: { format, laps: format === 'elimination' ? 4 : 2 + (beat === 'elite' ? 1 : 0), radius: rng.int(170, 240), wobble: recovery ? 0.3 : rng.range(0.36, 0.52), elevation: rng.pick([0, 6, 12, 16]), width: recovery ? 17 : rng.pick([13, 15, 16]), knots: rng.int(9, 12), length: rng.int(1700, 2500), hazards: recovery ? 0 : format === 'gauntlet' ? 14 : rng.int(2, 7), pads: rng.int(3, 6), passPlace: 3, stages: 1, seed: hashSeed(runSeed, wave) % 100000 } };
 }

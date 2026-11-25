@@ -14,7 +14,7 @@ const hz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 /** All audio is synthesised at runtime with Web Audio: SFX, adaptive layered music, crowd swells and announcer speech. */
 /** Minimum spacing for effects that can fire many times a second. */
-const REPEAT_GAP: Record<string, number> = { grunt: 0.35, scrape: 0.14, ricochet: 0.05, prox: 0.08, turn: 0.05, boot: 0.04, bump: 0.1, block: 0.06, drift: 0.2 };
+const REPEAT_GAP: Record<string, number> = { grunt: 0.35, scrape: 0.14, ricochet: 0.05, prox: 0.08, turn: 0.05, boot: 0.04, bump: 0.1, block: 0.06, ram: 0.12, drift: 0.2 };
 const AUDIO_BASE = import.meta.env.BASE_URL + 'game-assets/audio/';
 /** Recorded clips. Everything still works without them: the synthesiser underneath is the fallback. */
 const SAMPLES: Record<string, string> = {
@@ -189,6 +189,10 @@ export class AudioEngine {
       case 'beep': this.tone(d, t, 'square', 660, 660, 0.14, 0.14); this.tone(d, t, 'sine', 330, 330, 0.18, 0.2); break;
       case 'go': this.tone(d, t, 'square', 990, 990, 0.45, 0.14); this.tone(d, t, 'sine', 495, 495, 0.55, 0.25); this.burst(d, t, 'highpass', 4000, 9000, 0.7, 0.35, 0.15); break;
       case 'turn': this.tone(d, t, 'square', 1250 * r, 900, 0.045, 0.07); this.burst(d, t, 'highpass', 5000, 3000, 1, 0.04, 0.12); break;
+      // machine on machine: a heavy body thud, a metal clang with inharmonic partials, and a scrape of sparks; k scales it
+      case 'ram': { const g = Math.min(1.4, 0.55 + 0.5 * k); this.tone(d, t, 'sine', 120 * r, 38, 0.32, 0.95 * g); this.tone(d, t, 'triangle', 64, 30, 0.4, 0.6 * g);
+        for (const [f, a, dur] of [[410, 0.22, 0.5], [1063, 0.14, 0.38], [1789, 0.09, 0.3], [2730, 0.05, 0.22]] as const) this.tone(d, t, 'square', f * r, f * r * 0.97, dur, a * g);
+        this.burst(d, t, 'bandpass', 3200, 900, 1.4, 0.28, 0.55 * g); this.burst(d, t + 0.03, 'highpass', 6000, 3000, 0.8, 0.4 * Math.min(1, k), 0.25 * g); break; }
       case 'crash': this.burst(d, t, 'lowpass', 7000, 120, 0.5, 0.9, 1); this.tone(d, t, 'sine', 210, 34, 0.7, 0.8); for (let i = 0; i < 10; i++) this.tone(d, t + 0.05 + i * 0.04, 'square', (1500 - i * 110) * r, 400, 0.06, 0.09); break;
       case 'boost': this.tone(d, t, 'sawtooth', 160, 720, 0.5, 0.16, 0.05); this.burst(d, t, 'bandpass', 600, 5000, 1.4, 0.55, 0.3); break;
       case 'pickup': for (const [i, n] of [72, 76, 79, 84].entries()) this.tone(d, t + i * 0.05, 'triangle', hz(n), hz(n), 0.14, 0.16); break;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeStatic } from '../../engine/merge';
 import { BaseSession, ctl, type Ctx, type SessionResult } from '../../app/context';
 import type { Actions } from '../../input/input';
 import type { SimEvent } from '../../engine/events';
@@ -55,18 +56,21 @@ export class CombatSession extends BaseSession {
     });
     sim.obstacles.forEach((_, i) => this.addObstacle(i));
     // ion lanes: gold strips with light pulsing outward from the middle (either direction is fast), lit edge rails and end posts
+    // static set pieces (lane posts, ramps, arrows, decks) are gathered and merged into one draw per material
+    const sets = new THREE.Group();
     for (const ln of sim.lanes) {
       const L = ln.len * 2, Wd = ln.hw * 2, m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(ION_LANE) }, uLen: { value: L } },
         vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uLen; varying vec2 vUv; void main(){ float along = abs(vUv.x - 0.5) * uLen; float c = fract(along / 5.0 - abs(vUv.y - 0.5) * 0.6 - uTime * 1.4); float bar = smoothstep(0.6, 0.85, c) * (1.0 - smoothstep(0.85, 1.0, c)); float edge = smoothstep(0.42, 0.5, abs(vUv.y - 0.5)); float fade = 1.0 - smoothstep(0.9, 1.0, abs(vUv.x - 0.5) * 2.0); gl_FragColor = vec4(uColor * 2.0, (bar * 0.8 + edge * 0.95 + 0.12) * fade); ${TONE} }` });
       this.timed.push(m); const strip = new THREE.Mesh(new THREE.PlaneGeometry(L, Wd), m); strip.rotation.x = -Math.PI / 2; if (ln.axis === 1) strip.rotation.z = Math.PI / 2; strip.position.set(ln.x, 0.04, ln.z); strip.renderOrder = 1; W.add(strip);
-      for (const e of [-1, 1]) for (const s2 of [-1, 1]) { const post = edgeBlock(0.35, 1.4, 0.35, ION_LANE); const a = e * ln.len, b = s2 * (ln.hw + 0.5); post.position.set(ln.x + (ln.axis === 0 ? a : b), 0.7, ln.z + (ln.axis === 0 ? b : a)); W.add(post); }
+      for (const e of [-1, 1]) for (const s2 of [-1, 1]) { const post = edgeBlock(0.35, 1.4, 0.35, ION_LANE); const a = e * ln.len, b = s2 * (ln.hw + 0.5); post.position.set(ln.x + (ln.axis === 0 ? a : b), 0.7, ln.z + (ln.axis === 0 ? b : a)); sets.add(post); }
     }
     this.lines = new SpeedLines(th.accent); W.add(this.lines.mesh);
     this.ambient = new Ambient(th, { cx: 0, cz: 0, groundY: 0, rMin: H + 60, rMax: H + 230, hMin: 30, hMax: 110, seed: tier.id * 31, xr: ctx.xr.presenting, quality: ctx.settings.quality }); W.add(this.ambient.group);
-    for (const rp of sim.ramps) W.add(this.rampMesh(rp.x, rp.z, rp.dir, rp.hw, rp.len, rp.dir !== undefined && sim.decks.length && sim.decks.some((d) => Math.abs(rp.x) < d.hx + 12 && Math.abs(rp.z) < d.hz + 12) ? 1.6 : 1.1));
-    for (const ar of sim.arrows) W.add(this.arrowStrip(ar.x, ar.z, ar.dir, ar.hw, ar.len));
-    for (const d of sim.decks) W.add(this.deckMesh(d.x, d.z, d.hx, d.hz));
+    for (const rp of sim.ramps) sets.add(this.rampMesh(rp.x, rp.z, rp.dir, rp.hw, rp.len, rp.dir !== undefined && sim.decks.length && sim.decks.some((d) => Math.abs(rp.x) < d.hx + 12 && Math.abs(rp.z) < d.hz + 12) ? 1.6 : 1.1));
+    for (const ar of sim.arrows) sets.add(this.arrowStrip(ar.x, ar.z, ar.dir, ar.hw, ar.len));
+    for (const d of sim.decks) sets.add(this.deckMesh(d.x, d.z, d.hx, d.hz));
+    W.add(mergeStatic(sets));
     W.add(ctx.vfx.group); ctx.vfx.clear(); eng.setWorld(W);
     ctx.hud.show('combat'); ctx.audio.playMusic('cycles'); ctx.audio.ambience(tier.environment); ctx.audio.intensity = 0.3; ctx.audio.setCrowdBed(this.crowd ? 0.02 : 0);
     ctx.hud.banner(`TIER ${tier.endless ? '∞' : String(tier.id).padStart(2, '0')} — ${tier.name.toUpperCase()}`, tier.brief, this.introDur * 1000 - 400);
@@ -276,10 +280,13 @@ export class CombatSession extends BaseSession {
    * A jump ramp: a dark wedge rising to 1.1 m along its launch direction, with lit side rails and three chevrons that
    * run up its face toward the lip, so it reads as "ride up this way" from anywhere on the grid.
    */
+  /** Materials shared by every ramp, arrow strip and deck column, so the static merge can join them. */
+  private setMats: Record<string, THREE.Material> = {};
+  private setMat<T extends THREE.Material>(k: string, make: () => T): T { return (this.setMats[k] ??= make()) as T; }
   private rampMesh(x: number, z: number, dir: number, hw: number, len: number, H = 1.1) {
     const g = new THREE.Group(), col = this.th.accent2, prof = new THREE.Shape(); prof.moveTo(-len / 2, 0); prof.lineTo(len / 2, H); prof.lineTo(len / 2, 0); prof.closePath();
-    const body = new THREE.Mesh(new THREE.ExtrudeGeometry(prof, { depth: hw * 2, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: 0x07090e, metalness: 0.7, roughness: 0.35 })); body.geometry.translate(0, 0, -hw); g.add(body);
-    const lit = new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.6) }), slope = Math.atan2(H, len), sl = Math.hypot(len, H);
+    const body = new THREE.Mesh(new THREE.ExtrudeGeometry(prof, { depth: hw * 2, bevelEnabled: false }), this.setMat('rampBody', () => new THREE.MeshStandardMaterial({ color: 0x07090e, metalness: 0.7, roughness: 0.35 }))); body.geometry.translate(0, 0, -hw); g.add(body);
+    const lit = this.setMat('rampLit', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.6) })), slope = Math.atan2(H, len), sl = Math.hypot(len, H);
     for (const sz of [-1, 1]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(sl, 0.07, 0.07), lit); rail.position.set(0, H / 2 + 0.03, sz * (hw - 0.04)); rail.rotation.z = slope; g.add(rail); }
     const lip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, hw * 2), lit); lip.position.set(len / 2, H + 0.02, 0); g.add(lip);
     const ch = new THREE.Shape(); ch.moveTo(-0.35, -0.9); ch.lineTo(0.25, 0); ch.lineTo(-0.35, 0.9); ch.lineTo(-0.6, 0.9); ch.lineTo(0, 0); ch.lineTo(-0.6, -0.9); ch.closePath();
@@ -289,10 +296,10 @@ export class CombatSession extends BaseSession {
   }
   /** Boost arrows: a strip of chevrons on the grid that run toward the ramp, animated so they read as "go". */
   private arrowStrip(x: number, z: number, dir: number, hw: number, len: number) {
-    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x6dffb0) } },
+    const fresh = !this.setMats.arrow, m = this.setMat('arrow', () => new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x6dffb0) } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec2 vUv; void main(){ float c = fract((vUv.x - abs(vUv.y - 0.5) * 0.9) * 4.0 - uTime * 2.2); float a = smoothstep(0.55, 0.85, c) * 0.85 + 0.12; gl_FragColor = vec4(uColor * 1.8, a); ${TONE} }` });
-    this.timed.push(m); const g = new THREE.Mesh(new THREE.PlaneGeometry(len, hw * 2), m); g.rotation.x = -Math.PI / 2; const [dx, dz] = DIRS[dir]; const holder = new THREE.Group(); holder.add(g); holder.rotation.y = Math.atan2(-dz, dx); holder.position.set(x, 0.03, z); return holder;
+      fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec2 vUv; void main(){ float c = fract((vUv.x - abs(vUv.y - 0.5) * 0.9) * 4.0 - uTime * 2.2); float a = smoothstep(0.55, 0.85, c) * 0.85 + 0.12; gl_FragColor = vec4(uColor * 1.8, a); ${TONE} }` }));
+    if (fresh) this.timed.push(m); const g = new THREE.Mesh(new THREE.PlaneGeometry(len, hw * 2), m); g.rotation.x = -Math.PI / 2; const [dx, dz] = DIRS[dir]; const holder = new THREE.Group(); holder.add(g); holder.rotation.y = Math.atan2(-dz, dx); holder.position.set(x, 0.03, z); return holder;
   }
   /**
    * The raised deck: a slab DECK_H up on four hardlight columns, a lit rim, a grid on top and a glow underneath, so
@@ -302,7 +309,7 @@ export class CombatSession extends BaseSession {
     const g = new THREE.Group(), col = this.th.accent2, top = gridFloor(Math.max(hx, hz) * 2, this.th, 4, { fade: 1e4, glow: 0.8 }); top.scale.set(hx / Math.max(hx, hz), 1, hz / Math.max(hx, hz)); top.position.y = DECK_H + 0.01; this.timed.push(top.material as THREE.ShaderMaterial); g.add(top);
     const slab = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, 0.5, hz * 2), new THREE.MeshStandardMaterial({ color: 0x05070b, metalness: 0.7, roughness: 0.35 })); slab.position.y = DECK_H - 0.26; g.add(slab);
     const rim = edgeBlock(hx * 2 + 0.2, 0.18, hz * 2 + 0.2, col); rim.position.y = DECK_H + 0.05; g.add(rim);
-    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, DECK_H, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.9), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })); c.position.set(sx * (hx - 0.6), DECK_H / 2, sz * (hz - 0.6)); g.add(c); }
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, DECK_H, 8), this.setMat('deckCol', () => new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.9), transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }))); c.position.set(sx * (hx - 0.6), DECK_H / 2, sz * (hz - 0.6)); g.add(c); }
     const under = new THREE.Mesh(new THREE.PlaneGeometry(hx * 2, hz * 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); under.rotation.x = Math.PI / 2; under.position.y = DECK_H - 0.52; g.add(under);
     g.position.set(x, 0, z); return g;
   }

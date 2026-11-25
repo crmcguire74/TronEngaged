@@ -14,6 +14,7 @@ import { DIFFICULTIES, type DifficultyId, type TierDefinition } from '../../prog
 import { INTERCEPTOR_ID, RaceSim, WALL_COOLDOWN, WALL_LAY, type RaceIntent } from './race';
 import { inFeature, wrapIdx, type Track } from './track';
 import { buildScenery } from './scenery';
+import { mergeStatic } from '../../engine/merge';
 import { CYCLE_INTRO, introCamera, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, css, cycleAssets, playerTrail } from './view';
 
 const GATE = 0xffc23a;
@@ -53,9 +54,9 @@ function warnSign(): THREE.CanvasTexture {
 export class RaceSession extends BaseSession {
   readonly mode = 'cycle-race' as const; sim: RaceSim; private th: Theme; private intent: RaceIntent = { steer: 0, accel: 0, brake: 0, boost: false, ability: false };
   private cv: CycleView[] = []; private tails: Ribbon[] = []; private colors: number[] = []; private hz: THREE.Object3D[] = []; private timed: THREE.ShaderMaterial[] = []; private lines: SpeedLines; private fog: THREE.FogExp2;
-  private patrol!: Patrol; private drones!: Drones; private carrier!: Carrier; private look = new THREE.Vector3(); private downCam = 0; private camYaw = 0; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private radarPts: number[] = []; private ext = { cx: 0, cz: 0, r: 1 }; private storm = false; private padT = 0; private format: string; private yawPrev = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private wallMesh: THREE.InstancedMesh | null = null; private m4 = new THREE.Matrix4(); private q4 = new THREE.Quaternion(); private s4 = new THREE.Vector3(); private col4 = new THREE.Color(); private walled = false; private surgeT = 0; private boostPrev = false; private seatDirty = false; private early: boolean; private moved = false; private kills = 0; private seen = { hazard: 0, pad: 0, slow: 0, gate: 0 }; private gv: { g: THREE.Group; spin: THREE.Group; fill: THREE.MeshBasicMaterial }[] = []; private jet: THREE.Object3D | null = null; private jetTrail: Ribbon | null = null; private inTunnel = false; private noteT = 0; private note = ''; /** per-rider damped nose attitude, so rolling ground never judders the frame */ private pitchS: number[] = [];
+  private patrol!: Patrol; private drones!: Drones; private carrier!: Carrier; private look = new THREE.Vector3(); private downCam = 0; private camYaw = 0; private camPos = new THREE.Vector3(); private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private cockpit: boolean; private offset = new THREE.Vector3(); private recentred = false; private radarPts: number[] = []; private ext = { cx: 0, cz: 0, r: 1 }; private storm = false; private padT = 0; private format: string; private yawPrev = 0; private vrFirst: boolean; private vrYaw = 0; private start!: StartSequence; private wallMesh: THREE.InstancedMesh | null = null; private m4 = new THREE.Matrix4(); private q4 = new THREE.Quaternion(); private s4 = new THREE.Vector3(); private col4 = new THREE.Color(); private walled = false; private surgeT = 0; private boostPrev = false; private seatDirty = false; private early: boolean; private moved = false; private kills = 0; private seen = { hazard: 0, pad: 0, slow: 0, gate: 0 }; private gv: { g: THREE.Group; spin: THREE.Group; fill: THREE.MeshBasicMaterial }[] = []; private jet: THREE.Object3D | null = null; private jetTrail: Ribbon | null = null; private inTunnel = false; private noteT = 0; private note = ''; /** per-rider damped nose attitude, so rolling ground never judders the frame */ private pitchS: number[] = []; /** start lamps on the gantry: red through the countdown, green on GO */ private lamps: THREE.MeshBasicMaterial | null = null;
 
-  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...raceRivalModels(tier, cycle), 'azure'], 'azure'), ...(['metropolis', 'neon-circuit'].includes(tier.environment) ? ['city'] : []), ...(tier.modifiers.includes('interceptor') ? ['jet'] : []), 'craft', 'drone', tier.environment === 'outlands' ? 'hauler' : 'recognizer']; }
+  static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...raceRivalModels(tier, cycle), 'azure'], 'azure'), ...(['metropolis', 'neon-circuit'].includes(tier.environment) ? ['city'] : []), ...(tier.modifiers.includes('interceptor') ? ['jet'] : []), 'craft', 'drone', 'gantry', tier.environment === 'outlands' ? 'hauler' : 'recognizer']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0, stage = 0) {
     super(ctx, tier, diff);
@@ -94,8 +95,13 @@ export class RaceSession extends BaseSession {
     const scen = buildScenery(t, th, { groundY, seed: cfg.seed, quality: ctx.settings.quality });
     W.add(scen.group); this.timed.push(...scen.timed);
     // checkpoint gates and the start gantry
-    const gate = (i: number, col: number, big: boolean) => { const g = new THREE.Group(), hgt = big ? 8 : 6; for (const s of [-1, 1]) { const p = edgeBlock(0.7, hgt, 0.7, col); p.position.set(s * (hw + 1), hgt / 2, 0); g.add(p); } const top = edgeBlock(t.width + 2.7, big ? 1.6 : 0.6, 0.7, col); top.position.y = hgt; g.add(top); g.position.set(t.x[i], t.y[i], t.z[i]); g.rotation.y = Math.atan2(t.tx[i], t.tz[i]); W.add(g); };
-    gate(0, th.accent2, true); for (const c of sim.checkpoints) if (c !== 0) gate(c, th.accent, false); if (!t.closed) gate(t.n - 4, th.accent2, true);
+    const gates = new THREE.Group();
+    // start and finish: the Blender gantry (scripts/blender/build_start_gantry.py), scaled to the road; its lamps run the countdown
+    const gantry = (i: number) => { const inst = ctx.assets.instance('gantry'); const lamp = (this.lamps ??= new THREE.MeshBasicMaterial({ color: 0x220806 })), trim = new THREE.MeshBasicMaterial({ color: new THREE.Color(th.accent2).multiplyScalar(1.5) });
+      inst.root.traverse((o: any) => { if (!o.isMesh) return; const n = o.material?.name; if (n === 'Lamps') o.material = lamp; else if (n === 'Trim') o.material = trim; });
+      inst.root.scale.setScalar((t.width + 2) / 18); inst.root.position.set(t.x[i], t.y[i], t.z[i]); inst.root.rotation.y = Math.atan2(t.tx[i], t.tz[i]); W.add(inst.root); };
+    const gate = (i: number, col: number, big: boolean) => { if (big && ctx.assets.has('gantry')) return gantry(i); const g = new THREE.Group(), hgt = big ? 8 : 6; for (const s of [-1, 1]) { const p = edgeBlock(0.7, hgt, 0.7, col); p.position.set(s * (hw + 1), hgt / 2, 0); g.add(p); } const top = edgeBlock(t.width + 2.7, big ? 1.6 : 0.6, 0.7, col); top.position.y = hgt; g.add(top); g.position.set(t.x[i], t.y[i], t.z[i]); g.rotation.y = Math.atan2(t.tx[i], t.tz[i]); gates.add(g); };
+    gate(0, th.accent2, true); for (const c of sim.checkpoints) if (c !== 0) gate(c, th.accent, false); if (!t.closed) gate(t.n - 4, th.accent2, true); W.add(mergeStatic(gates));
     for (const p of sim.pads) { const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x6dffb0) } }, vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }', fragmentShader: `uniform float uTime; uniform vec3 uColor; varying vec2 vUv; void main(){ float c = fract((vUv.y - abs(vUv.x - 0.5) * 6.0) / 4.0 - uTime * 2.5); float a = smoothstep(0.55, 0.9, c); gl_FragColor = vec4(uColor * 2.0, a * 0.85); ${TONE} }` }); this.timed.push(m); const mesh = new THREE.Mesh(ribbonGeo(t, p.d - p.hw, p.d + p.hw, 0.04, 0.04, p.i0, p.i1 + 1), m); W.add(mesh); }
     // charge gates: a gold hoop standing on the road with spinning chevrons; ride through the middle to recharge the light wall
     for (const gt of sim.gates) {
@@ -169,8 +175,11 @@ export class RaceSession extends BaseSession {
         // contact scales with how hard the two met: a brush throws a few sparks, a proper hit shakes the frame
         const f = Math.min(1, (e.force ?? 2) / 12);
         vfx.sparks(e.x, e.y + 0.6, e.z, e.hard ? 0xffd9a0 : 0xffffff, 8 + Math.round(f * 40), 6 + f * 9, 0.3 + f * 0.3);
-        audio.sfx(e.hard ? 'crash' : 'block', e); engine.addShake(0.12 + f * 0.65); input.rumble(0.4 + f * 0.6, 0.4 + f * 0.6, 80 + f * 140);
-        if (e.hard) { xr.pulse('both', 0.9, 150); hud.flash('hurt'); }
+        // every touch the player is part of is heard right at the bike: a body thud and a clang, louder the harder it was
+        audio.sfx('ram', undefined, 0.4 + f * 1.6); if (e.hard) audio.sfx('crash', e);
+        engine.addShake(0.18 + f * 0.7); input.rumble(0.5 + f * 0.5, 0.5 + f * 0.5, 90 + f * 150); xr.pulse('both', 0.45 + f * 0.5, 60 + f * 110);
+        vfx.ring(e.x, e.y + 0.5, e.z, 0xffd9a0, 0.25, 2.5 + f * 3, 0.25);
+        if (e.hard) { hud.flash(e.mine ? 'good' : 'hurt'); if (!e.mine) engine.hurt(0.45, e); }
         break;
       }
       case 'slam': vfx.sparks(e.x, e.y + 0.5, e.z, 0xffd9a0, 70, 14, 0.6); vfx.ring(e.x, e.y + 0.2, e.z, 0xffb62e, 0.4, 6, 0.4); audio.sfx('crash'); audio.sfx('railSlam'); audio.sfx('grunt'); engine.hurt(1, e); audio.say('Rail impact.'); hud.flash('hurt'); hud.toast('SLAMMED INTO THE RAIL', 'danger'); engine.addShake(1.1); xr.pulse('both', 1, 300); input.rumble(1, 1, 320); break;
@@ -203,7 +212,7 @@ export class RaceSession extends BaseSession {
         const f = Math.min(1, (e.force ?? 6) / 16);
         vfx.sparks(e.x, e.y + 0.6, e.z, 0xffffff, 34 + Math.round(f * 50), 11 + f * 10, 0.5 + f * 0.3);
         vfx.ring(e.x, e.y + 0.3, e.z, 0xffffff, 0.35, 4 + f * 3, 0.35);
-        audio.sfx('crash', e.player ? undefined : e);
+        audio.sfx('ram', undefined, 1.2 + f); audio.sfx('crash', e.player ? undefined : e);
         // a shove the player lands is felt: a hit-stop, metal on metal, sparks thrown off the side and a kick through the bars
         if (e.by === this.sim.player.id) { this.slowmo(f > 0.6 ? 0.4 : 0.22, f > 0.6 ? 0.3 : 0.45); vfx.sparks(e.x, e.y + 0.7, e.z, 0xffd9a0, 60, 14, 0.5); vfx.ring(e.x, e.y + 0.6, e.z, 0xffb62e, 0.3, 6, 0.3); audio.sfx('railSlam', e); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
         else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.hurt(0.9, e); audio.sfx('grunt'); engine.addShake(0.6 + f * 0.6); xr.pulse('both', 1, 200); input.rumble(1, 1, 260); }
@@ -234,6 +243,14 @@ export class RaceSession extends BaseSession {
 
   protected view(dt: number, alpha: number, a: Actions) {
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, T = sim.track, t = engine.elapsed, cam = engine.camera;
+    if (this.lamps) {
+      // countdown: each lamp beat flares red and fades; GO flashes green, which settles into the circuit's accent
+      const c = this.lamps.color;
+      if (this.phase === 'countdown') { const f = (this.t % 0.8) / 0.8; c.setRGB(1, 0.02, 0.01).multiplyScalar(0.5 + 2.2 * Math.exp(-f * 4)); }
+      else if (this.phase === 'play' && this.t < 2.5) c.setRGB(0.2, 1, 0.45).multiplyScalar(0.6 + 2 * Math.exp(-this.t * 1.6));
+      else if (this.phase === 'play' || this.phase === 'outro') c.set(this.th.accent2).multiplyScalar(0.7 + 0.3 * Math.sin(this.t * 2.4));
+      else c.setRGB(0.18, 0.03, 0.02);
+    }
     for (const m of this.timed) m.uniforms.uTime.value = t; this.patrol.update(dt); this.ambient.update(t, this.phase === 'play' ? clamp(this.sim.player.speed / this.sim.player.veh.top, 0, 1) : 0.2); vfx.update(dt); this.padT -= dt; this.sim.gates.forEach((gt, k) => { const v = this.gv[k]; if (!v) return; v.spin.rotation.z = t * 1.4 + k; const f = gt.flash / 0.6; v.fill.opacity = 0.06 + 0.03 * Math.sin(t * 4 + k) + 0.45 * f; v.g.scale.setScalar(1 + 0.15 * f); });
     if (a.camera && !this.xr && this.phase !== 'intro') { this.cockpit = !this.cockpit; this.ctx.settings.cycleCamera = this.cockpit ? 'cockpit' : 'chase'; }
     this.fog.density = damp(this.fog.density, this.th.fogDensity * (this.storm ? 7 : 1), 3, dt);
@@ -248,7 +265,9 @@ export class RaceSession extends BaseSession {
       this.pitchS[i] = damp(this.pitchS[i] ?? wantPitch, wantPitch, 5, dt);
       // the machine also rolls with the corner's cross-slope, so a banked turn is ridden, not skated across
       const roll = Math.atan(T.bank[r.idx]);
-      v.lean = damp(v.lean, clamp(r.steer * 0.42 * clamp(r.speed / 30, 0, 1) + r.slip * 0.5 - roll, -0.85, 0.85), 9, dt);
+      // a shoved machine lurches: its wheels are knocked sideways and the body lags, so it tips back toward the hitter
+      const shove = r.shoveT > 0 ? clamp((r.shx * -Math.cos(r.h) + r.shz * Math.sin(r.h)) / 22, -1, 1) * clamp(r.shoveT, 0, 1) * 0.6 : 0;
+      v.lean = damp(v.lean, clamp(r.steer * 0.42 * clamp(r.speed / 30, 0, 1) + r.slip * 0.5 - roll - shove, -0.85, 0.85), r.shoveT > 0 ? 14 : 9, dt);
       v.pose(x, y, z, yaw, dt, r.speed / r.veh.top, false, this.pitchS[i]);
       (v.glow.material as THREE.MeshBasicMaterial).opacity = r.boosting ? 0.65 : 0.25; v.body.visible = r.stun <= 0 || Math.sin(t * 40) > 0;
       this.tails[i].push(x - Math.sin(yaw) * 1.3, y + 0.45, z - Math.cos(yaw) * 1.3);
