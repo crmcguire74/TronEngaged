@@ -108,6 +108,7 @@ describe('combat jump ramps', () => {
     const cfg: CombatConfig = { half: 70, seed: 3, speed: 24, rivals: [{ profile: 'evader', skill: 0.1, model: 'ember' }, { profile: 'evader', skill: 0.1, model: 'jade' }], modifiers: ['ramps'], pillars: 0, aiSkill: 0, hazardMul: 1, resources: 1 } as any;
     const sim = new CombatSim(cfg); const P = sim.player, rp = sim.ramps.find((r) => DIRS[r.dir][0] === 1)!, R = sim.cycles[1], far = sim.cycles[2];
     for (const c of [R, far]) { c.x = -60; c.z = -62; c.px = c.x; c.pz = c.z; c.trail = [c.x, c.z]; c.dir = 1; } far.x = far.px = -50; far.trail = [far.x, far.z];
+    sim.arrows.length = 0; // the base jump; arrows are tested on their own below
     P.dir = rp.dir; P.x = rp.x - rp.len / 2 - 2; P.z = rp.z; P.px = P.x; P.pz = P.z; P.trail = [P.x, P.z]; P.speed = 24;
     return { sim, P, rp, R };
   }
@@ -144,5 +145,35 @@ describe('race balance', () => {
     const e = buildRaceConfig(early, 'standard', 'azure'), l = buildRaceConfig(late, 'standard', 'azure');
     expect(e.rivals[0].skill).toBeGreaterThan(early.enemies[0].difficulty + 0.15);
     expect(l.rivals[0].skill).toBeCloseTo(late.enemies[0].difficulty, 5);
+  });
+});
+
+describe('combat arrows, decks and discs', () => {
+  const base = (mods: string[]) => ({ half: 70, seed: 3, speed: 24, rivals: [{ profile: 'evader', skill: 0.1, model: 'ember' }, { profile: 'evader', skill: 0.1, model: 'jade' }], modifiers: mods, pillars: 0, aiSkill: 0, hazardMul: 1, resources: 1 }) as any as CombatConfig;
+  const idle: CycleIntent = { turn: 0, accel: 0, boost: false, ability: false };
+  const park = (sim: CombatSim) => { for (const c of sim.cycles.slice(1)) { c.x = c.px = -60; c.z = c.pz = -62 + c.id; c.trail = [c.x, c.z]; c.trailLvl = [0]; c.dir = 1; c.discCd = 1e9; } };
+  it('boost arrows throw a rider to surge speed, and the jump after them flies further', () => {
+    const sim = new CombatSim(base(['ramps'])); park(sim); const P = sim.player, ar = sim.arrows.find((a) => DIRS[a.dir][0] === 1)!;
+    P.dir = ar.dir; P.x = P.px = ar.x - ar.len / 2 - 1; P.z = P.pz = ar.z; P.trail = [P.x, P.z]; P.trailLvl = [0]; P.speed = 24;
+    let arrow = false, dur = 0; for (let i = 0; i < 2 / DT && !dur; i++) { sim.events.length = 0; sim.step(DT, idle); for (const e of sim.events as any[]) { if (e.type === 'arrow' && e.player) arrow = true; if (e.type === 'jump' && e.player) dur = P.airDur; } }
+    expect(arrow).toBe(true); expect(dur).toBeGreaterThan(1.2);
+  });
+  it('a jump off a deck ramp lands the rider on the deck, where walls on the grid below do not touch it', () => {
+    const sim = new CombatSim(base(['decks'])); park(sim); const P = sim.player, rp = sim.ramps.find((r) => r.dir === 0)!, d = sim.decks[0];
+    P.dir = 0; P.x = P.px = rp.x - 6; P.z = P.pz = rp.z; P.trail = [P.x, P.z]; P.trailLvl = [0]; P.speed = 24;
+    // a wall on the grid right across the deck, which a rider on the deck passes over
+    const R = sim.cycles[1]; R.trail = [d.x + 4, d.z - 10]; R.trailLvl = [0]; R.x = R.px = d.x + 4; R.z = R.pz = d.z + 10; R.alive = false; R.trailGone = false; R.deathT = 1e9;
+    let onDeck = false; for (let i = 0; i < 2.2 / DT && P.alive; i++) { sim.step(DT, idle); if (P.lvl === 1) onDeck = true; }
+    expect(onDeck).toBe(true); expect(P.alive).toBe(true);
+  });
+  it('a disc from the player crashes a rival in its line, and is stopped by a wall', () => {
+    const sim = new CombatSim(base(['discs'])); park(sim); const P = sim.player, R = sim.cycles[1];
+    P.dir = 0; P.x = P.px = -20; P.z = P.pz = 0; P.trail = [P.x, P.z]; P.trailLvl = [0]; R.x = R.px = 8; R.z = R.pz = 0; R.dir = 2; R.trail = [R.x + 0.5, 0]; R.trailLvl = [0]; R.ai!.thinkT = 1e9; R.ai!.intent.turn = 0; // coming head-on down the disc's line, its wall behind it, not turning
+    sim.throwGridDisc(P); let hit = false; for (let i = 0; i < 1 / DT && !hit; i++) { sim.events.length = 0; sim.step(DT, idle); hit = (sim.events as any[]).some((e) => e.type === 'cdiscHit' && e.id === R.id); }
+    expect(hit).toBe(true); expect(R.alive).toBe(false);
+    const s2 = new CombatSim(base(['discs'])); park(s2); const P2 = s2.player, W = s2.cycles[1];
+    P2.dir = 0; P2.x = P2.px = -20; P2.z = P2.pz = 0; P2.trail = [P2.x, P2.z]; P2.trailLvl = [0]; W.trail = [-5, -8, -5, 8]; W.trailLvl = [0, 0]; W.x = W.px = -5; W.z = W.pz = 8; W.alive = false; W.trailGone = false; W.deathT = 1e9;
+    s2.throwGridDisc(P2); let spent = false; for (let i = 0; i < 1 / DT && !spent; i++) { s2.events.length = 0; s2.step(DT, idle); spent = (s2.events as any[]).some((e) => e.type === 'cdiscSpent'); }
+    expect(spent).toBe(true);
   });
 });

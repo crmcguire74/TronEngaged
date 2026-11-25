@@ -79,6 +79,8 @@ export class Hud implements HudApi {
     c.save(); c.translate(S / 2, S / 2 + 10);
     if (r.kind === 'grid') {
       const k = (S / 2 - 26) / r.half0; c.fillStyle = 'rgba(79,227,255,0.05)'; c.fillRect(-r.half * k, -r.half * k, r.half * 2 * k, r.half * 2 * k); c.strokeStyle = 'rgba(160,220,255,0.75)'; c.lineWidth = 2; c.strokeRect(-r.half * k, -r.half * k, r.half * 2 * k, r.half * 2 * k);
+      if (r.decks) for (const d of r.decks) { c.strokeStyle = 'rgba(255,220,140,0.85)'; c.lineWidth = 2; c.strokeRect((d.x - d.hx) * k, (d.z - d.hz) * k, d.hx * 2 * k, d.hz * 2 * k); }
+      if (r.discs) for (const d of r.discs) { const sz = d.atMe ? 7 : 4; c.save(); c.translate(d.x * k, d.z * k); c.rotate(Math.PI / 4); c.fillStyle = d.mine ? '#9ff3ff' : Math.floor(performance.now() / 120) % 2 ? '#ffffff' : '#ff2a14'; c.fillRect(-sz / 2, -sz / 2, sz, sz); c.restore(); }
       c.fillStyle = 'rgba(160,220,255,0.3)'; for (const o of r.obstacles) { if (o.state === 'off') continue; c.globalAlpha = o.state === 'warn' ? 0.4 : 1; c.fillRect((o.x - o.hx) * k, (o.z - o.hz) * k, o.hx * 2 * k, o.hz * 2 * k); } c.globalAlpha = 1;
       for (const cy of r.cycles) { if (cy.gone) continue; c.strokeStyle = cy.color; c.lineWidth = cy.player ? 3 : 2; c.lineJoin = 'round'; c.beginPath(); const t = cy.trail; let pen = false; for (let i = 0; i < t.length; i += 2) { if (t[i] !== t[i]) { pen = false; continue; } if (pen) c.lineTo(t[i] * k, t[i + 1] * k); else { c.moveTo(t[i] * k, t[i + 1] * k); pen = true; } } if (pen && !cy.air) c.lineTo(cy.x * k, cy.z * k); c.stroke(); }
       for (const p of r.pickups) if (p.alive) { c.fillStyle = '#ffe14a'; c.save(); c.translate(p.x * k, p.z * k); c.rotate(0.785); c.fillRect(-3.5, -3.5, 7, 7); c.restore(); }

@@ -465,22 +465,24 @@ export class WallTrail {
   private quad(v: number, a: number[], b: number[], c: number[], d: number[], ua: [number, number], ub: [number, number], uc: [number, number], ud: [number, number]) {
     const p = this.pos, uv = this.uv; [a, b, c, d].forEach((q, k) => p.set(q, (v + k) * 3)); [ua, ub, uc, ud].forEach((q, k) => uv.set(q, (v + k) * 2));
   }
-  private seg(i: number, ax: number, az: number, bx: number, bz: number, u0: number) {
+  private seg(i: number, ax: number, az: number, bx: number, bz: number, u0: number, y0 = 0) {
     // a gap in the trail (the cycle was in the air): collapse all three quads to nothing
     if (ax !== ax || bx !== bx) { const v = i * VPS; this.pos.fill(0, v * 3, (v + VPS) * 3); return u0; }
     const len = Math.hypot(bx - ax, bz - az), v = i * VPS, u1 = u0 + len;
     // across the segment (a zero-length head segment at the start of a run falls back to a fixed axis)
     const nx = len > 1e-4 ? -(bz - az) / len : 1, nz = len > 1e-4 ? (bx - ax) / len : 0, cw = CAP_W / 2, fw = FLOOR_W / 2, fy = 0.02;
-    this.quad(v, [ax, 0, az], [ax, WALL_H, az], [bx, 0, bz], [bx, WALL_H, bz], [u0, 0], [u0, 1], [u1, 0], [u1, 1]);
-    this.quad(v + 4, [ax - nx * cw, WALL_H, az - nz * cw], [ax + nx * cw, WALL_H, az + nz * cw], [bx - nx * cw, WALL_H, bz - nz * cw], [bx + nx * cw, WALL_H, bz + nz * cw], [u0, 1], [u0, 1], [u1, 1], [u1, 1]);
-    this.quad(v + 8, [ax - nx * fw, fy, az - nz * fw], [ax + nx * fw, fy, az + nz * fw], [bx - nx * fw, fy, bz - nz * fw], [bx + nx * fw, fy, bz + nz * fw], [u0, -1], [u0, -1], [u1, -1], [u1, -1]);
+    const y1 = y0 + WALL_H, yf = y0 + fy;
+    this.quad(v, [ax, y0, az], [ax, y1, az], [bx, y0, bz], [bx, y1, bz], [u0, 0], [u0, 1], [u1, 0], [u1, 1]);
+    this.quad(v + 4, [ax - nx * cw, y1, az - nz * cw], [ax + nx * cw, y1, az + nz * cw], [bx - nx * cw, y1, bz - nz * cw], [bx + nx * cw, y1, bz + nz * cw], [u0, 1], [u0, 1], [u1, 1], [u1, 1]);
+    this.quad(v + 8, [ax - nx * fw, yf, az - nz * fw], [ax + nx * fw, yf, az + nz * fw], [bx - nx * fw, yf, bz - nz * fw], [bx + nx * fw, yf, bz + nz * fw], [u0, -1], [u0, -1], [u1, -1], [u1, -1]);
     return u1;
   }
   /** pts: flat trail vertices; (hx,hz): current head position. Only the live segment is rewritten each frame. */
-  update(pts: number[], hx: number, hz: number, t: number) {
-    const n = Math.min(MAX_SEG, pts.length / 2); let u = 0;
-    if (n !== this.built) { for (let i = 0; i < n - 1; i++) u = this.seg(i, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], u); this.built = n; this.uBuilt = u; } else u = this.uBuilt;
-    if (n > 0) this.seg(n - 1, pts[(n - 1) * 2], pts[(n - 1) * 2 + 1], hx, hz, u);
+  /** lv: the level each vertex was laid on (raised decks), lvH: height of one level; the live segment uses the last vertex's level. */
+  update(pts: number[], hx: number, hz: number, t: number, lv?: number[], lvH = 0, live = true) {
+    const n = Math.min(MAX_SEG, pts.length / 2); let u = 0; const y = (i: number) => (lv?.[i] ?? 0) * lvH;
+    if (n !== this.built) { for (let i = 0; i < n - 1; i++) u = this.seg(i, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], u, y(i)); this.built = n; this.uBuilt = u; } else u = this.uBuilt;
+    if (n > 0) { if (live) this.seg(n - 1, pts[(n - 1) * 2], pts[(n - 1) * 2 + 1], hx, hz, u, y(n - 1)); else this.seg(n - 1, NaN, 0, NaN, 0, u); }
     const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.uv.needsUpdate = true; g.setDrawRange(0, n * 18); this.mat.uniforms.uTime.value = t;
   }
 }
