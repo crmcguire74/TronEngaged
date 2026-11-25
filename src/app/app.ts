@@ -90,7 +90,7 @@ export class App {
 
   applySettings(save = true) {
     const s = this.store.data.settings; this.ctx.settings = s; this.engine.applySettings(s); this.audio.applySettings(s); this.input.setSettings(s); this.xr.setSettings(s);
-    this.hud.mapPlace = s.vr.map ?? 'left'; this.hud.subtitles = s.subtitles; this.hud.threatShapes = s.threatShapes; this.vfx.flashes = !s.reducedFlashes; document.body.classList.toggle('reduced-flashes', s.reducedFlashes);
+    this.hud.mapPlace = s.vr.map ?? 'left'; this.hud.subtitles = s.subtitles; this.hud.threatShapes = s.threatShapes; this.vfx.flashes = !s.reducedFlashes; this.engine.reducedFlashes = s.reducedFlashes; document.body.classList.toggle('reduced-flashes', s.reducedFlashes);
     if (save) this.store.save();
   }
 

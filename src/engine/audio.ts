@@ -14,7 +14,7 @@ const hz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 /** All audio is synthesised at runtime with Web Audio: SFX, adaptive layered music, crowd swells and announcer speech. */
 /** Minimum spacing for effects that can fire many times a second. */
-const REPEAT_GAP: Record<string, number> = { scrape: 0.14, ricochet: 0.05, prox: 0.08, turn: 0.05, boot: 0.04, bump: 0.1, block: 0.06, drift: 0.2 };
+const REPEAT_GAP: Record<string, number> = { grunt: 0.35, scrape: 0.14, ricochet: 0.05, prox: 0.08, turn: 0.05, boot: 0.04, bump: 0.1, block: 0.06, drift: 0.2 };
 const AUDIO_BASE = import.meta.env.BASE_URL + 'game-assets/audio/';
 /** Recorded clips. Everything still works without them: the synthesiser underneath is the fallback. */
 const SAMPLES: Record<string, string> = {
@@ -127,6 +127,16 @@ export class AudioEngine {
     const c = this.ctx!, o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.setValueAtTime(Math.max(20, f0), t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(dst); o.start(t); o.stop(t + dur + 0.03);
   }
+  /**
+   * A short voiced sound: a falling buzz shaped by two vocal formants, with a breath of noise on the front. Used for the
+   * rider's grunt when hit, so a hit is heard as a person taking it rather than as another machine noise.
+   */
+  private voice(dst: AudioNode, t: number, f0: number, f1: number, dur: number, gain: number, formants: [number, number]) {
+    const c = this.ctx!, o = c.createOscillator(), g = c.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.018); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const [f, q, k] of [[formants[0], 5, 1], [formants[1], 7, 0.55]] as const) { const bp = c.createBiquadFilter(), m = c.createGain(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q; m.gain.value = k; o.connect(bp); bp.connect(m); m.connect(g); }
+    g.connect(dst); o.start(t); o.stop(t + dur + 0.05);
+  }
   private burst(dst: AudioNode, t: number, type: BiquadFilterType, f0: number, f1: number, q: number, dur: number, gain: number) {
     const c = this.ctx!, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); s.buffer = this.noise; s.loop = true; f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
     g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); s.connect(f); f.connect(g); g.connect(dst); s.start(t, Math.random()); s.stop(t + dur + 0.03);
@@ -153,6 +163,8 @@ export class AudioEngine {
       case 'parry': for (const [i, f] of [1320, 1980, 2970].entries()) this.tone(d, t + i * 0.012, 'sine', f * r, f * r * 0.995, 0.7, 0.2); this.burst(d, t, 'highpass', 7000, 3000, 0.7, 0.12, 0.35); break;
       case 'hit': this.tone(d, t, 'square', 190 * r, 70, 0.2, 0.35); this.burst(d, t, 'lowpass', 2600, 300, 0.8, 0.22, 0.7); break;
       case 'hurt': this.tone(d, t, 'sawtooth', 240, 90, 0.3, 0.3); this.burst(d, t, 'lowpass', 1500, 200, 1, 0.3, 0.6); break;
+      // the rider's own grunt: "uh" formants on a falling pitch, a little different every time
+      case 'grunt': { const p = 150 + Math.random() * 40; this.burst(d, t, 'bandpass', 900, 500, 1.2, 0.08, 0.35); this.voice(d, t + 0.01, p, p * 0.58, 0.26 + Math.random() * 0.06, 0.9, [560 + Math.random() * 80, 1150 + Math.random() * 120]); break; }
       case 'shatter': for (let i = 0; i < 14; i++) this.tone(d, t + i * 0.035 + Math.random() * 0.02, 'square', (1800 - i * 105) * r, (900 - i * 50) * r, 0.07, 0.11); this.burst(d, t, 'lowpass', 6000, 200, 0.6, 0.75, 0.55); this.tone(d, t, 'sine', 140, 38, 0.6, 0.5); break;
       case 'tell': this.tone(d, t, 'triangle', 380, 880, 0.55 * k, 0.16, 0.2); break;
       case 'tellHoming': this.tone(d, t, 'sawtooth', 300, 300, 0.7 * k, 0.1, 0.1); this.tone(d, t, 'sine', 920, 1300, 0.7 * k, 0.12, 0.3); break;

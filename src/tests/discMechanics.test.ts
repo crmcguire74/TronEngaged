@@ -71,3 +71,23 @@ describe('tier ladder variety', () => {
     for (let i = 1; i < DISC_TIERS.length; i++) if (tag(DISC_TIERS[i])) expect(tag(DISC_TIERS[i])).not.toBe(tag(DISC_TIERS[i - 1]));
   });
 });
+
+describe('cutter beams', () => {
+  /** A rival disc flown straight through where the player stands, laying its beam as it goes. */
+  function flyThrough(sim: DiscSim) {
+    const P = sim.player, E = sim.fighters[1], d = sim.discs.find((x) => x.owner === E.id)!;
+    d.state = 'flying'; d.team = 1; d.x = P.x - 6; d.y = P.y + 1; d.z = P.z; d.vx = 12; d.vy = 0; d.vz = 0; d.homing = 0; d.hit.clear(); d.hit.add(P.id);
+    return d;
+  }
+  it('lays a beam behind a rival disc and cuts the player once per window', () => {
+    const sim = arena(['cutter']); const P = sim.player, hp = P.hp; flyThrough(sim);
+    const cuts: number[] = []; for (let i = 0; i < 1.4 / DT; i++) { sim.events.length = 0; sim.step(DT, emptyIntent()); if (sim.events.some((e) => e.type === 'beamCut')) cuts.push(sim.time); }
+    expect(cuts.length).toBeGreaterThanOrEqual(1); expect(P.hp).toBeLessThan(hp);
+    for (let i = 1; i < cuts.length; i++) expect(cuts[i] - cuts[i - 1]).toBeGreaterThanOrEqual(0.79);
+  });
+  it('lets a dodge pass through unharmed, and lays no beam on tiers without it', () => {
+    const sim = arena(['cutter']); const P = sim.player, hp = P.hp; flyThrough(sim);
+    for (let i = 0; i < 1.4 / DT; i++) { P.invuln = 1; sim.step(DT, emptyIntent()); } expect(P.hp).toBe(hp);
+    const plain = arena([]); flyThrough(plain); for (let i = 0; i < 0.6 / DT; i++) plain.step(DT, emptyIntent()); expect(plain.discs.every((d) => !d.beam?.length)).toBe(true);
+  });
+});

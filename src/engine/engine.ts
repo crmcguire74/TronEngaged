@@ -22,6 +22,8 @@ export class Engine {
   /** 0..1: the view breaks up into squares of light that wink out. Works in VR (it is a mesh on the camera). */ derez = 0; derezTarget = 0; derezSpeed = 2; private derezMesh: THREE.Mesh;
   /** Eye position at the last render, for distance LODs (one frame stale, which nothing can see). */ readonly viewPos = new THREE.Vector3();
   /** Multiplies every LOD distance: below 1 pulls detail in sooner. Lowered by the frame-time governor under load. */ lodScale = 1;
+  /** Damage flash: a red glow round the edge of the view, heaviest on the side the hit came from. A mesh on the camera, so it shows in a headset. */
+  private hurtMesh: THREE.Mesh; private hurtAmt = 0; private hurtDir = new THREE.Vector3(); private hq = new THREE.Quaternion();
   elapsed = 0; private stats = { calls: 0, triangles: 0 } as { calls: number; triangles: number };
 
   constructor(canvas: HTMLCanvasElement) {
@@ -52,6 +54,14 @@ export class Engine {
           gl_FragColor = vec4(col, on * sq * mix(0.92, 1.0, fresh)); }` });
     this.derezMesh = new THREE.Mesh(new THREE.SphereGeometry(0.29, 24, 16), dz); this.derezMesh.renderOrder = 9998; this.derezMesh.frustumCulled = false; this.derezMesh.visible = false; this.camera.add(this.derezMesh);
 
+    const hm = new THREE.ShaderMaterial({ transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide, uniforms: { uAmt: { value: 0 }, uDir: { value: new THREE.Vector3() } },
+      vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform float uAmt; uniform vec3 uDir; varying vec3 vP; void main(){
+        vec3 d = normalize(vP); float a = acos(clamp(-d.z, -1.0, 1.0));
+        // a ring round the edge of the view; with a direction, the side facing the hit burns and the far side fades
+        float edge = smoothstep(0.42, 1.05, a); float side = length(uDir) > 0.01 ? 0.25 + 0.75 * max(dot(normalize(d.xy + 1e-4), normalize(uDir.xy + 1e-4)), 0.0) : 1.0;
+        gl_FragColor = vec4(1.0, 0.08, 0.04, edge * side * uAmt * 0.85); }` });
+    this.hurtMesh = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 16), hm); this.hurtMesh.renderOrder = 9997; this.hurtMesh.frustumCulled = false; this.hurtMesh.visible = false; this.camera.add(this.hurtMesh);
     this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.4, 0.55, 0.9); this.composer.addPass(this.bloom);
@@ -77,6 +87,17 @@ export class Engine {
   addShake(v: number) { if (!this.reducedMotion && !this.renderer.xr.isPresenting) this.shake = Math.min(1, this.shake + v); }
   fadeTo(v: number, speed = 3) { this.fadeTarget = v; this.fadeSpeed = speed; }
   derezTo(v: number, speed = 2) { this.derezTarget = v; this.derezSpeed = speed; }
+  /**
+   * Shows a hit on the player. `from` is the world point (or direction) the hit came from; without it the whole edge
+   * flashes. Strength 0..1. Honours reduced flashes.
+   */
+  hurt(strength = 1, from?: { x: number; y: number; z: number }, isDirection = false) {
+    this.hurtAmt = Math.max(this.hurtAmt, Math.min(1, strength) * (this.reducedFlashes ? 0.45 : 1));
+    if (!from) { this.hurtDir.set(0, 0, 0); return; }
+    const cam = this.camera; cam.updateMatrixWorld(); const d = isDirection ? this.hurtDir.set(from.x, from.y, from.z) : this.hurtDir.set(from.x, from.y, from.z).sub(this.viewPos);
+    d.applyQuaternion(cam.getWorldQuaternion(this.hq).invert()).setZ(0); if (d.lengthSq() < 1e-6) d.set(0, 0, 0); else d.normalize();
+  }
+  reducedFlashes = false;
 
   render(dt: number) {
     this.elapsed += dt; this.stats = { ...this.renderer.info.render }; this.renderer.info.reset();
@@ -84,6 +105,7 @@ export class Engine {
     (this.fadeMesh.material as THREE.MeshBasicMaterial).opacity = this.fade; this.fadeMesh.visible = this.fade > 0.003;
     this.derez += Math.sign(this.derezTarget - this.derez) * Math.min(Math.abs(this.derezTarget - this.derez), dt * this.derezSpeed);
     const du = (this.derezMesh.material as THREE.ShaderMaterial).uniforms; du.uAmt.value = this.derez; du.uTime.value = this.elapsed; this.derezMesh.visible = this.derez > 0.004;
+    this.hurtAmt = Math.max(0, this.hurtAmt - dt * 2.2); const hu = (this.hurtMesh.material as THREE.ShaderMaterial).uniforms; hu.uAmt.value = this.hurtAmt; hu.uDir.value.copy(this.hurtDir); this.hurtMesh.visible = this.hurtAmt > 0.01;
     const xr = this.renderer.xr.isPresenting;
     (this.vignette.material as THREE.ShaderMaterial).uniforms.uAmt.value = xr ? this.vignetteAmount : 0; this.vignette.visible = xr && this.vignetteAmount > 0.01;
     this.camera.position.sub(this.shakeOff); this.shakeOff.set(0, 0, 0);

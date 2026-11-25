@@ -164,7 +164,7 @@ export class RaceSession extends BaseSession {
     const { vfx, audio, hud, engine, xr, input } = this.ctx, mine = e.id === this.sim.player.id || e.player, col = e.id ? this.colors[e.id - 1] : 0xffffff;
     switch (e.type) {
       case 'scrape': vfx.sparks(e.x, e.y + 0.4, e.z, 0xffe9c0, e.hard ? 30 : 12, 9, 0.35); if (mine) { audio.sfx('scrape'); engine.addShake(e.hard ? 0.5 : 0.2); xr.pulse('both', e.hard ? 0.9 : 0.4, 80); input.rumble(0.7, 0.4, 120); } else audio.sfx('scrape', e); break;
-      case 'hazardHit': vfx.shatter(e.x, e.y, e.z, 0xff3b4e, 40, 1.2); audio.sfx('hit', mine ? undefined : e); if (mine) { hud.flash('hurt'); engine.addShake(0.8); xr.pulse('both', 1, 200); input.rumble(1, 1, 250); hud.toast('IMPACT', 'danger'); } break;
+      case 'hazardHit': vfx.shatter(e.x, e.y, e.z, 0xff3b4e, 40, 1.2); audio.sfx('hit', mine ? undefined : e); if (mine) { hud.flash('hurt'); engine.hurt(0.85, e); audio.sfx('grunt'); engine.addShake(0.8); xr.pulse('both', 1, 200); input.rumble(1, 1, 250); hud.toast('IMPACT', 'danger'); } break;
       case 'bump': {
         // contact scales with how hard the two met: a brush throws a few sparks, a proper hit shakes the frame
         const f = Math.min(1, (e.force ?? 2) / 12);
@@ -173,7 +173,7 @@ export class RaceSession extends BaseSession {
         if (e.hard) { xr.pulse('both', 0.9, 150); hud.flash('hurt'); }
         break;
       }
-      case 'slam': vfx.sparks(e.x, e.y + 0.5, e.z, 0xffd9a0, 70, 14, 0.6); vfx.ring(e.x, e.y + 0.2, e.z, 0xffb62e, 0.4, 6, 0.4); audio.sfx('crash'); audio.sfx('railSlam'); audio.say('Rail impact.'); hud.flash('hurt'); hud.toast('SLAMMED INTO THE RAIL', 'danger'); engine.addShake(1.1); xr.pulse('both', 1, 300); input.rumble(1, 1, 320); break;
+      case 'slam': vfx.sparks(e.x, e.y + 0.5, e.z, 0xffd9a0, 70, 14, 0.6); vfx.ring(e.x, e.y + 0.2, e.z, 0xffb62e, 0.4, 6, 0.4); audio.sfx('crash'); audio.sfx('railSlam'); audio.sfx('grunt'); engine.hurt(1, e); audio.say('Rail impact.'); hud.flash('hurt'); hud.toast('SLAMMED INTO THE RAIL', 'danger'); engine.addShake(1.1); xr.pulse('both', 1, 300); input.rumble(1, 1, 320); break;
       case 'boost': if (e.on) audio.sfx('boost', mine ? undefined : this.pos(e.id)); break;
       case 'drift': if (e.on) audio.sfx('drift'); break;
       case 'driftBoost': hud.toast('DRIFT BOOST', 'good'); audio.sfx('pad'); break;
@@ -189,7 +189,7 @@ export class RaceSession extends BaseSession {
         // a rival derezzes on your wall (or off the road): big, unmissable, and counted
         const v = this.cv[e.id - 1], mineKill = e.by === this.sim.player.id && !mine; v.root.visible = false; this.tails[e.id - 1].mesh.visible = false;
         vfx.derez(e.x, e.y, e.z, col, { height: 1.5, count: mine ? 420 : 260, power: mine ? 11 : 9, floorR: this.sim.track.width / 2, big: mineKill || mine });
-        if (mine) { this.downCam = 0; hud.banner('DEREZZED', 'You rode into a light wall — re-forming', 1500); audio.say('Derezzed.'); engine.addShake(1); engine.derez = 0.45; xr.pulse('both', 1, 400); input.rumble(1, 1, 450); }
+        if (mine) { engine.hurt(1); audio.sfx('grunt'); this.downCam = 0; hud.banner('DEREZZED', 'You rode into a light wall — re-forming', 1500); audio.say('Derezzed.'); engine.addShake(1); engine.derez = 0.45; xr.pulse('both', 1, 400); input.rumble(1, 1, 450); }
         else if (e.cause === 'wall' && e.by !== this.sim.player.id && this.sim.racers[e.id - 1].progress > this.sim.player.progress - 3) hud.toast('RIVAL DEREZZED', 'info'); audio.sfx('shatter', e); audio.sfx('explosion', e);
         // a takedown mid-race never takes the camera: the player is still steering at speed. It gets a short, light
         // slow-down (control stays usable) on top of the banner, sound and rumble below.
@@ -205,7 +205,7 @@ export class RaceSession extends BaseSession {
         vfx.ring(e.x, e.y + 0.3, e.z, 0xffffff, 0.35, 4 + f * 3, 0.35);
         audio.sfx('crash', e.player ? undefined : e);
         if (e.by === this.sim.player.id) { if (f > 0.75) this.slowmo(0.35, 0.7); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
-        else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.addShake(0.6 + f * 0.6); xr.pulse('both', 1, 200); input.rumble(1, 1, 260); }
+        else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.hurt(0.9, e); audio.sfx('grunt'); engine.addShake(0.6 + f * 0.6); xr.pulse('both', 1, 200); input.rumble(1, 1, 260); }
         break;
       }
       case 'wall': audio.sfx('boost', mine ? undefined : this.pos(e.id)); if (mine) { this.walled = true; hud.toast('LIGHT WALL ON', 'good'); xr.pulse('both', 0.5, 80); } else { const r = this.sim.racers[e.id - 1], P = this.sim.player; if (r.progress > P.progress && (r.progress - P.progress) * this.sim.track.step < 60) hud.toast('LIGHT WALL AHEAD — STEER ROUND IT', 'warn'); } break;

@@ -53,13 +53,58 @@ function reticle(): THREE.CanvasTexture {
   return (reticleTex = new THREE.CanvasTexture(c));
 }
 /** A rival's disc: a black core in a bright serrated rim, so it reads as a coloured ring rather than a white glow. */
-function hostileDisc(): { group: THREE.Group; rim: THREE.MeshBasicMaterial } {
+/**
+ * A rival's disc: a black core in a bright rim, so it reads as a coloured shape rather than a white glow. The shape
+ * escalates with the tier: a serrated ring early, a triangle from tier 11, a four-point star from tier 21 and on
+ * every boss. Geometry is built once per form and shared.
+ */
+export type DiscForm = 'ring' | 'tri' | 'star';
+export const discForm = (tierId: number, boss: boolean): DiscForm => (boss || tierId > 20 ? 'star' : tierId > 10 ? 'tri' : 'ring');
+const formGeo = new Map<DiscForm, { rim: THREE.BufferGeometry; core: THREE.BufferGeometry }>();
+function formShapes(form: DiscForm) {
+  let f = formGeo.get(form); if (f) return f;
+  const outline = (r: number, pts: number, inner: number, round: number) => { const sh = new THREE.Shape(); const n = pts * (inner < 1 ? 2 : 1); for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI * 2 + Math.PI / 2, rr = inner < 1 && i % 2 ? r * inner : r; const x = Math.cos(a) * rr, y = Math.sin(a) * rr; if (i === 0) sh.moveTo(x, y); else sh.lineTo(x, y); } void round; return sh; };
+  const make = (sh: THREE.Shape, depth: number) => { const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 1, curveSegments: 4 }); g.translate(0, 0, -depth / 2); g.rotateX(-Math.PI / 2); return g; };
+  const shape = form === 'tri' ? (r: number) => outline(r, 3, 1, 0) : (r: number) => outline(r, 4, 0.48, 0);
+  const rimSh = shape(0.5); rimSh.holes.push(new THREE.Path(shape(0.36).getPoints()));
+  f = { rim: make(rimSh, 0.06), core: make(shape(0.37), 0.045) }; formGeo.set(form, f); return f;
+}
+function hostileDisc(form: DiscForm = 'ring'): { group: THREE.Group; rim: THREE.MeshBasicMaterial } {
   const g = new THREE.Group(), rim = new THREE.MeshBasicMaterial({ color: HOSTILE }), dark = new THREE.MeshBasicMaterial({ color: 0x06080b });
+  if (form !== 'ring') { const f = formShapes(form); g.add(new THREE.Mesh(f.core, dark), new THREE.Mesh(f.rim, rim)); const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 12), rim); g.add(hub); return { group: g, rim }; }
   const core = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 24), dark), ring = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.055, 8, 36), rim); ring.rotation.x = Math.PI / 2; g.add(core, ring);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.07, 12), rim); g.add(hub);
   const tooth = new THREE.ConeGeometry(0.075, 0.2, 3); tooth.rotateZ(-Math.PI / 2); tooth.scale(1, 0.35, 1);
   for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2, t = new THREE.Mesh(tooth, rim); t.position.set(Math.cos(a) * 0.43, 0, -Math.sin(a) * 0.43); t.rotation.y = a + 0.5; g.add(t); }
   return { group: g, rim };
+}
+/**
+ * Every live cutter beam in one mesh: each beam point becomes a short upright blade of light, joined into a ribbon
+ * that fades toward its tail. Rebuilt each frame from the sim's points (a few dozen at most), one draw call.
+ */
+class BeamView {
+  readonly mesh: THREE.Mesh; private pos: Float32Array; private al: Float32Array; private idx: Uint16Array; private max = 400;
+  constructor() {
+    this.pos = new Float32Array(this.max * 2 * 3); this.al = new Float32Array(this.max * 2); this.idx = new Uint16Array(this.max * 6);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage)); g.setAttribute('aA', new THREE.BufferAttribute(this.al, 1).setUsage(THREE.DynamicDrawUsage)); g.setIndex(new THREE.BufferAttribute(this.idx, 1).setUsage(THREE.DynamicDrawUsage)); g.setDrawRange(0, 0);
+    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, uniforms: { uColor: { value: new THREE.Color(0xff2a14) } },
+      vertexShader: 'attribute float aA; varying float vA; void main(){ vA = aA; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 uColor; varying float vA; void main(){ gl_FragColor = vec4(uColor * 2.2, vA); }' });
+    this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 4;
+  }
+  /** Each beam is its own strip: quads join consecutive points of one beam only, never one beam to the next. */
+  update(discs: readonly { beam?: number[] }[], now: number) {
+    let v = 0, n6 = 0; const P = this.pos, A = this.al, I = this.idx;
+    for (const d of discs) {
+      const b = d.beam; if (!b || b.length < 8) continue; const n = b.length / 4; if (v + n > this.max) break;
+      for (let i = 0; i < n; i++) {
+        const k = (v + i) * 2, a = Math.max(0, 1 - (now - b[i * 4 + 3]) / 1.1) * 0.85; P.set([b[i * 4], b[i * 4 + 1] - 0.13, b[i * 4 + 2], b[i * 4], b[i * 4 + 1] + 0.13, b[i * 4 + 2]], k * 3); A[k] = a * 0.6; A[k + 1] = a;
+        if (i > 0) { const q = k - 2; I.set([q, q + 1, q + 2, q + 1, q + 3, q + 2], n6); n6 += 6; }
+      }
+      v += n;
+    }
+    const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.aA.needsUpdate = true; g.index!.needsUpdate = true; g.setDrawRange(0, n6); this.mesh.visible = n6 > 0;
+  }
 }
 interface PlatView { root: THREE.Group; ring: THREE.Mesh; surge: THREE.Mesh; sink: number; beam: THREE.Mesh }
 
@@ -117,6 +162,7 @@ export class DiscSession extends BaseSession {
     this.sim.barriers.forEach((_, i) => this.addBarrierView(i));
     this.sim.amps.forEach(() => this.addAmpView());
     if (this.sim.core) this.buildCore();
+    if (this.tier.modifiers.includes('cutter')) { this.beams = new BeamView(); this.world.add(this.beams.mesh); }
     for (const f of this.sim.fighters) this.addFighter(f);
     // VR: the held disc sits in the tracked throwing hand
     this.vrDisc = ctx.assets.instance('disc:azure').root; this.vrDisc.visible = false; this.vrDisc.userData.shared = true;
@@ -176,7 +222,7 @@ export class DiscSession extends BaseSession {
     for (const id of f.discIds) this.addDisc(id, f);
   }
   // ---------------------------------------------------------------- core breach and power nodes
-  private seenNode = false; private locked = new Set<number>(); private ambient!: Ambient;
+  private seenNode = false; private beams: BeamView | null = null; private seenCut = false; private locked = new Set<number>(); private ambient!: Ambient;
   private coreV: { root: THREE.Group; shell: THREE.Group; core: THREE.Mesh; coreMat: THREE.MeshBasicMaterial; halo: THREE.Mesh; pips: THREE.MeshBasicMaterial[] } | null = null;
   private nodeV = new Map<number, { g: THREE.Group; kind: string }>();
   /**
@@ -215,7 +261,7 @@ export class DiscSession extends BaseSession {
     const d = this.sim.disc(id)!; const hostile = !f.isPlayer, color = hostile ? HOSTILE : ION; const root = new THREE.Group();
     // yours keeps the supplied model and a cool blue trail; a rival's is a red serrated ring with a cross-shaped trail and a bracket that faces you
     let model: THREE.Object3D, rim: THREE.MeshBasicMaterial | null = null, mark: THREE.Sprite | null = null, rise: Ribbon | null = null;
-    if (hostile) { const h = hostileDisc(); model = h.group; rim = h.rim; mark = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticle(), color: HOSTILE, transparent: true, opacity: 0, depthWrite: false })); mark.renderOrder = 40; root.add(mark); rise = new Ribbon(color, 18, 0.5, true, 0.25); }
+    if (hostile) { const h = hostileDisc(discForm(this.tier.id, !!f.arch.boss)); model = h.group; rim = h.rim; mark = new THREE.Sprite(new THREE.SpriteMaterial({ map: reticle(), color: HOSTILE, transparent: true, opacity: 0, depthWrite: false })); mark.renderOrder = 40; root.add(mark); rise = new Ribbon(color, 18, 0.5, true, 0.25); }
     else {
       // the player throws whichever disc is equipped; rivals keep their own kind
       const key = 'disc:' + (f.isPlayer ? this.ctx.settings.disc || d.kind : d.kind);
@@ -378,8 +424,8 @@ export class DiscSession extends BaseSession {
       case 'bounce': audio.sfx('ricochet', e, e.kind === 'barrier' ? 1.3 : e.kind === 'platform' ? 0.8 : 1); vfx.sparks(e.x, e.y, e.z, this.dv.get(e.disc)?.color ?? ION, 18, 8, 0.4, e); vfx.ring(e.x + e.nx * 0.05, e.y + e.ny * 0.05, e.z + e.nz * 0.05, this.th.accent, 0.2, 2.2, 0.4, e); for (const m of this.wallMats) m.uniforms.uFlash.value = Math.max(m.uniforms.uFlash.value, e.kind === 'wall' ? 0.05 : 0); break;
       case 'catch': if (mine) { audio.sfx('catch'); xr.pulse(xr.dominant, 0.5, 50); input.rumble(0.2, 0.4, 60); } break;
       case 'recall': if (mine) audio.sfx('recall'); break;
-      case 'hit': vfx.sparks(e.x, e.y, e.z, mine ? HOSTILE : ION, 30, 10, 0.5, { x: e.dx, y: 0.4, z: e.dz }); vfx.ring(e.x, e.y, e.z, mine ? HOSTILE : ION, 0.1, 1.4, 0.25, { x: e.dx, y: 0, z: e.dz }); audio.sfx(mine ? 'hurt' : 'hit', e); if (v) { v.hitT = 0.4; v.hx = e.dx; v.hz = e.dz; } if (!mine) { this.crowd.excite(e.bounces > 0 ? 1 : 0.7); if (e.bounces > 0) audio.cheer(0.6); } break;
-      case 'damage': if (mine) { hud.flash('hurt'); engine.addShake(0.6); xr.pulse('both', 0.9, 160); input.rumble(1, 0.8, 220); audio.intensity = Math.min(1, audio.intensity + 0.15); } break;
+      case 'hit': vfx.sparks(e.x, e.y, e.z, mine ? HOSTILE : ION, 30, 10, 0.5, { x: e.dx, y: 0.4, z: e.dz }); vfx.ring(e.x, e.y, e.z, mine ? HOSTILE : ION, 0.1, 1.4, 0.25, { x: e.dx, y: 0, z: e.dz }); audio.sfx(mine ? 'hurt' : 'hit', e); if (mine) { audio.sfx('grunt'); engine.hurt(0.95, { x: -e.dx, y: 0, z: -e.dz }, true); } if (v) { v.hitT = 0.4; v.hx = e.dx; v.hz = e.dz; } if (!mine) { this.crowd.excite(e.bounces > 0 ? 1 : 0.7); if (e.bounces > 0) audio.cheer(0.6); } break;
+      case 'damage': if (mine) { if (e.cause !== 'disc') { audio.sfx('grunt'); engine.hurt(0.8); } hud.flash('hurt'); engine.addShake(0.6); xr.pulse('both', 0.9, 160); input.rumble(1, 0.8, 220); audio.intensity = Math.min(1, audio.intensity + 0.15); } break;
       case 'block': audio.sfx('block', e); vfx.sparks(e.x, e.y, e.z, 0xbfe9ff, 14, 6, 0.3); vfx.ring(e.x, e.y, e.z, 0xbfe9ff, 0.2, 1.4, 0.3, f ? { x: f.ax, y: 0, z: f.az } : undefined); if (mine) { xr.pulse(xr.offhand, 0.8, 90); input.rumble(0.6, 0.3, 100); } break;
       case 'parry': audio.sfx('parry', e); vfx.sparks(e.x, e.y, e.z, 0xffffff, 40, 13, 0.6); vfx.ring(e.x, e.y, e.z, 0xffffff, 0.3, 3.4, 0.45, f ? { x: f.ax, y: 0, z: f.az } : undefined); vfx.flash(e.x, e.y, e.z, 0xffffff, 14); if (mine) { hud.flash('good'); xr.pulse(xr.offhand, 1, 140); input.rumble(0.9, 0.9, 140); this.crowd.excite(1.2); audio.cheer(0.9); } break;
       case 'shieldUp': if (mine) this.shielded = true; audio.sfx('shieldUp', pos); if (mine) xr.pulse(xr.offhand, 0.3, 40); break;
@@ -412,6 +458,7 @@ export class DiscSession extends BaseSession {
       case 'coreHit': { const cv = this.coreV; if (cv) cv.pips.forEach((m, i) => m.color.setHex(i < e.hp ? this.th.accent2 : 0x222831)); vfx.shatter(e.x, e.y, e.z, 0xffffff, 30, 1, undefined, 6); vfx.ring(this.sim.core!.x, this.sim.core!.y, this.sim.core!.z, 0xffffff, 1, 6, 0.5); audio.sfx('shatter', e); audio.cheer(0.6);
         hud.toast(e.hp > 0 ? `CORE HIT — ${e.hp} LEFT` : 'CORE BREACHED', 'score'); xr.pulse('both', 0.7, 120); break; }
       case 'coreDown': { const cv = this.coreV; if (cv) { vfx.derez(e.x, e.y - 2, e.z, this.th.accent2, { height: 4, count: 500, power: 12, big: true }); this.world.remove(cv.root); this.coreV = null; } hud.banner('CORE BREACHED', 'The rival side is wired to it', 2200); audio.sfx('explosion'); audio.cheer(1.4); engine.addShake(0.8); break; }
+      case 'beamCut': vfx.sparks(e.x, e.y, e.z, 0xff2a14, 26, 7, 0.4); audio.sfx('shieldBreak'); hud.toast('CUT BY A BEAM — HOP OR DODGE ACROSS IT', 'danger'); if (!this.seenCut) { this.seenCut = true; audio.say('Beam contact.'); } break;
       case 'wave': hud.banner(`WAVE ${e.index + 1} / ${e.total}`, 'Reinforcements materialising', 2000); audio.say('Reinforcements inbound.'); break;
       case 'bossIntro': this.bossName = e.title; break;
       case 'bossPhase': if (!e.first) { hud.banner(`PHASE ${e.index + 1} — ${String(e.name).toUpperCase()}`, this.bossName, 2200); audio.sfx('boss'); audio.intensity = 1; if (f) { vfx.ring(f.x, f.y + 1, f.z, f.arch.tint, 0.5, 9, 0.9); vfx.flash(f.x, f.y + 1, f.z, f.arch.tint, 30); } this.crowd.excite(1.3); audio.cheer(1); } break;
@@ -440,7 +487,7 @@ export class DiscSession extends BaseSession {
 
   // ------------------------------------------------------------ presentation
   protected view(dt: number, alpha: number, a: Actions) {
-    this.animateObjectives(dt, a);
+    this.animateObjectives(dt, a); this.beams?.update(this.sim.discs, this.sim.time);
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, t = engine.elapsed, cam = engine.camera;
     this.ambient.update(t, this.phase === 'play' ? clamp(0.35 + this.sim.activeAttackers() * 0.2 + (this.sim.rally - 1), 0, 1) : 0.2);
     for (const m of this.timed) { m.uniforms.uTime.value = t; if (m.uniforms.uFlash) m.uniforms.uFlash.value *= Math.exp(-6 * dt); }

@@ -42,6 +42,7 @@ export interface Disc {
   bounces: number; age: number; homing: number; target: number; hit: Set<number>; parried: boolean; /** passed through an amplifier ring this flight */ amped?: boolean;
   /** What was thrown: a ricocheting disc, an unparryable straight lance, or a heavy arc blade. */ weapon?: Weapon;
   /** A split-throw copy: it derezzes instead of returning, and is removed from the list. */ temp?: boolean; dead?: boolean;
+  /** Cutter tiers: the hardlight beam a rival disc leaves behind it, flat [x, y, z, t, ...], newest last. */ beam?: number[];
 }
 /** Power node on one of the player's decks: stand on it to take it. Split and Pierce charge the next throw. */
 export interface PowerNode { id: number; kind: 'split' | 'pierce' | 'mend'; platform: number; ox: number; oz: number; x: number; y: number; z: number; life: number }
@@ -76,6 +77,7 @@ export class DiscSim {
   /** Rally ('rally' tiers): parries and hits raise it (to 1.6); it speeds the player's throws and adds damage. A hit taken resets it. */ rally = 1;
   /** Power nodes ('pickups' tiers) and the charge the next throw carries. */ nodes: PowerNode[] = []; nodeT = 6; buff: '' | 'split' | 'pierce' = '';
   core: Core | null = null;
+  /** Cutter tiers: rival discs leave a beam that cuts whoever crosses it; the player can only be cut once per window. */ private cutter = false; private cutCd = 0;
   private nextId = 1; private ambientInterfere = 0;
   player!: Fighter;
 
@@ -91,6 +93,7 @@ export class DiscSim {
     this.shiftTimer = this.shiftAuto;
     this.ambientInterfere = cfg.modifiers.includes('interference') ? 14 : 0;
     if (cfg.modifiers.includes('amp')) { const n = cfg.modifiers.includes('amp-3') ? 3 : 2; for (let i = 0; i < n; i++) { const bx = n === 3 ? (i - 1) * 7 : (i ? 4.5 : -4.5); this.amps.push({ x: bx, y: 2.3 + (i % 2) * 0.9, z: 3.2, r: 1.25, bx, sway: n === 3 ? 1.6 : 2.6, phase: i * 2.2, flash: 0 }); } }
+    this.cutter = cfg.modifiers.includes('cutter');
     if (cfg.modifiers.includes('core')) { const A = cfg.arena; this.core = { x: 0, y: 7.5, z: -(A.radius - 3.2), hp: 6, max: 6, rot: 0, spin: 0.6, gap: 1.5, flash: 0 }; }
     const home = this.platforms.findIndex((p) => p.side === 0);
     const P = this.platforms[home];
@@ -159,7 +162,7 @@ export class DiscSim {
       const intent = f.isPlayer ? playerIntent : aiThink(this, f, dt);
       this.stepFighter(f, intent, dt);
     }
-    this.stepDiscs(dt);
+    this.stepDiscs(dt); if (this.cutter) this.stepBeams(dt);
     if (this.discs.some((d) => d.dead)) this.discs = this.discs.filter((d) => !d.dead);
     this.stepUpgrades();
     this.checkBoss();
@@ -413,6 +416,24 @@ export class DiscSim {
     const kinds = ['split', 'pierce', 'mend'] as const, kind = P.hp < P.maxHp * 0.45 ? 'mend' : kinds[Math.floor(this.rng.next() * 3)];
     const a = this.rng.range(0, Math.PI * 2), r = pick.p.r * 0.45, n: PowerNode = { id: this.nextId++, kind, platform: pick.i, ox: Math.cos(a) * r, oz: Math.sin(a) * r, x: 0, y: 0, z: 0, life: 14 };
     n.x = pick.p.x + n.ox; n.y = pick.p.y; n.z = pick.p.z + n.oz; this.nodes.push(n); this.events.push({ type: 'nodeSpawn', node: n.id, kind, x: n.x, y: n.y, z: n.z });
+  }
+  /**
+   * Cutter beams: while a rival disc flies it lays a point every 50 ms; points live 1.1 s, so each disc drags a short
+   * blade of light behind it. Crossing one costs the player 10 (scaled by difficulty: 7 to 15) and a stagger. A dodge's immunity, or being in the air
+   * over it, avoids the cut: the answer is to move or hop, not to block.
+   */
+  private stepBeams(dt: number) {
+    const P = this.player, life = 1.1; this.cutCd = Math.max(0, this.cutCd - dt);
+    for (const d of this.discs) {
+      if (d.team !== 1 && !d.beam?.length) continue; const b = (d.beam ??= []);
+      if (d.state === 'flying' && d.team === 1) { const n = b.length; if (!n || this.time - b[n - 1] >= 0.05) b.push(d.x, d.y, d.z, this.time); }
+      let cut = 0; while (cut < b.length && this.time - b[cut + 3] > life) cut += 4; if (cut) b.splice(0, cut);
+      if (!P.alive || P.invuln > 0 || P.falling || this.cutCd > 0 || b.length < 8) continue;
+      for (let i = 0; i + 7 < b.length; i += 4) {
+        const d2 = segSegDist2(b[i], b[i + 1], b[i + 2], b[i + 4], b[i + 5], b[i + 6], P.x, P.y + 0.3, P.z, P.x, P.y + 1.6, P.z, seg);
+        if (d2 < 0.42 * 0.42) { this.cutCd = 0.8; this.events.push({ type: 'beamCut', x: P.x, y: P.y + 1, z: P.z }); this.damage(P, Math.round(10 * this.cfg.hazardMul), 0, 0, 'beam'); break; }
+      }
+    }
   }
   private raiseRally(by: number) {
     if (!this.cfg.modifiers.includes('rally')) return; const before = this.rally; this.rally = Math.min(1.6, this.rally + by);

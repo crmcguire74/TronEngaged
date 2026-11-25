@@ -164,7 +164,7 @@ export class CombatSession extends BaseSession {
         // a rival you trapped: a short, light slow-down while play goes on, with the camera left on the player. Only the
         // last rival, when the round is already won and nothing is left to steer round, gets the camera swing.
         if (!e.player && e.by === this.sim.player.id) { const last = this.sim.aliveRivals() === 0; if (last) { this.slowmo(this.xr ? 0.7 : 1.6, this.xr ? 0.5 : 0.18); this.killCam(e.x, 0, e.z, 1.7); } else this.slowmo(0.5, 0.6); xr.pulse('both', 0.8, 180); }
-        if (e.player) { this.lastCrash = e.kind; hud.flash('hurt'); xr.pulse('both', 1, 400); input.rumble(1, 1, 500); } else { this.crowd?.excite(1.2); audio.cheer(e.by === 1 ? 1 : 0.5); hud.toast(e.by === 1 && e.kind === 'trail' ? 'TRAPPED  +400' : 'RIVAL DOWN  +150', 'score'); }
+        if (e.player) { this.lastCrash = e.kind; hud.flash('hurt'); engine.hurt(1); audio.sfx('grunt'); xr.pulse('both', 1, 400); input.rumble(1, 1, 500); } else { this.crowd?.excite(1.2); audio.cheer(e.by === 1 ? 1 : 0.5); hud.toast(e.by === 1 && e.kind === 'trail' ? 'TRAPPED  +400' : 'RIVAL DOWN  +150', 'score'); }
         break;
       }
       case 'trap': audio.say('Trap confirmed.', { quiet: true }); break;
