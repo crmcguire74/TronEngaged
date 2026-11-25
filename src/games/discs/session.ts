@@ -176,7 +176,7 @@ export class DiscSession extends BaseSession {
     for (const id of f.discIds) this.addDisc(id, f);
   }
   // ---------------------------------------------------------------- core breach and power nodes
-  private seenNode = false; private ambient!: Ambient;
+  private seenNode = false; private locked = new Set<number>(); private ambient!: Ambient;
   private coreV: { root: THREE.Group; shell: THREE.Group; core: THREE.Mesh; coreMat: THREE.MeshBasicMaterial; halo: THREE.Mesh; pips: THREE.MeshBasicMaterial[] } | null = null;
   private nodeV = new Map<number, { g: THREE.Group; kind: string }>();
   /**
@@ -276,7 +276,7 @@ export class DiscSession extends BaseSession {
   // ------------------------------------------------------------ lifecycle
   protected intro(k: number, dt: number) {
     const P = this.sim.player, cam = this.ctx.engine.camera;
-    for (const f of this.sim.fighters) { const v = this.fv.get(f.id); if (!v || f.isPlayer) continue; const t = clamp((k - 0.25) / 0.5, 0, 1); v.reveal.value = f.y - 0.2 + t * 2.8 * f.arch.scale; if (t > 0 && t < 1 && Math.random() < 0.5) this.ctx.vfx.motes(f.x, f.y, f.z, f.arch.tint, 0.6, 2, 3); if (t >= 1) v.reveal.value = 50;
+    for (const f of this.sim.fighters) { const v = this.fv.get(f.id); if (!v || f.isPlayer) continue; const t = clamp((k - 0.5) / 0.4, 0, 1); v.reveal.value = f.y - 0.2 + t * 2.8 * f.arch.scale; if (t > 0 && t < 1 && Math.random() < 0.5) this.ctx.vfx.motes(f.x, f.y, f.z, f.arch.tint, 0.6, 2, 3); if (t >= 1) v.reveal.value = 50;
       // once formed, each rival draws its disc; the first one calls the player out
       if (t >= 1 && !v.greeted) { v.greeted = true; v.inst.play('GrabDisc', 0.15, true); v.hold = 1.5; if (!this.called) { this.called = true; this.ctx.audio.vo('jeer_intro', `${f.arch.label}: "Prepare yourself."`, { x: f.x, y: f.y + 1.6, z: f.z }, 1, 'jeer_intro_' + f.kind); } }
     }
@@ -448,7 +448,12 @@ export class DiscSession extends BaseSession {
     this.crowd.update(dt, t); this.drones.orbit(dt, 0, 4, 0, sim.cfg.arena.radius + 3.5, this.look.set(P.x, P.y + 1.2, P.z)); vfx.update(dt); if (!this.xr && this.vrDisc) this.vrDisc.visible = false;
     // platforms
     sim.platforms.forEach((p, i) => {
-      const v = this.pv[i]; v.sink = damp(v.sink, p.state === 'down' ? 1 : 0, 5, dt); v.root.position.set(p.x, p.y - v.sink * 16, p.z); v.root.visible = v.sink < 0.97;
+      const v = this.pv[i]; v.sink = damp(v.sink, p.state === 'down' ? 1 : 0, 5, dt);
+      // intro: the arena assembles round the player. Their own deck is already there; every other deck rises out of the
+      // void in turn and locks in with a ring of light, before the rivals form on them
+      let rise = 0; if (this.phase === 'intro' && i !== this.sim.player.platform) { const order = this.pv.length > 1 ? i / (this.pv.length - 1) : 0, k = clamp((this.t - 0.25 - order * 1.1) / 0.9, 0, 1), e = 1 - Math.pow(1 - k, 3); rise = (1 - e) * 22;
+        if (k >= 1 && !this.locked.has(i)) { this.locked.add(i); this.ctx.vfx.ring(p.x, p.y + 0.05, p.z, this.th.accent, p.r * 0.6, p.r * 1.6, 0.5); this.ctx.audio.sfx('platformUp', { x: p.x, y: p.y, z: p.z }); } }
+      v.root.position.set(p.x, p.y - v.sink * 16 - rise, p.z); v.root.visible = v.sink < 0.97;
       const rm = v.ring.material as THREE.MeshBasicMaterial, warn = p.state === 'warn';
       v.ring.scale.setScalar(warn ? 1 + 0.03 * Math.sin(t * 28) : 1); rm.color.setHex(warn ? (Math.sin(t * 28) > 0 ? 0xffffff : 0xff3b30) : p.side === 0 ? (this.interfere ? 0xb77bff : ION) : this.th.accent2 === ION ? 0xff8a3c : this.th.accent2);
       const sm = v.surge.material as THREE.MeshBasicMaterial, target = i === this.hopTo && !P.hop && !P.falling;

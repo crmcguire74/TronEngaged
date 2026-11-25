@@ -11,6 +11,11 @@ and in VR (WebXR):
 
 36 authored tiers per game (72 total), endless seeded modes, four difficulties, local save.
 
+Disc tiers rotate three fight-changing systems through the ladder: **Rally** (clean exchanges make your throws faster
+and harder until you take a hit), **Power nodes** (Split, Pierce and Mend on your other decks) and **Core breach** (a
+shielded core behind the rival line whose turning gap is a second way to win). Cycle events open with every rider
+igniting their machine out of a light baton; in a headset it forms around your own hands when you squeeze.
+
 > Built from `TronPRD.pdf`. This is a personal, non-commercial fan build: it uses the Tron name and the supplied Tron
 > models as its hero art. Third-party models and audio, and the licence each one carries, are listed in `CREDITS.md`;
 > anything whose licence does not allow redistribution in a build is held in `assets/` and never shipped.
@@ -70,8 +75,8 @@ In VR:
   for the device in your hands, and what that tier's modifiers mean.
 - The **overhead map** can sit left, right, far left, far right or top, or be hidden (Settings, or the pause menu while
   riding). The same setting moves the desktop map.
-- Each cycle event opens with the riders walking to their machines and mounting. You watch your own rider from beside
-  the machine, then are faded into the seat; canopies close on "Ready" and the drives fire on "Begin".
+- Each cycle event opens with ignition: you are already in the seat with a light baton in your throwing hand. Squeeze
+  (or wait for the count) and the machine and cockpit build outward from your hand; the drives fire on "Begin".
 - Cycles are ridden from the cockpit, with the rider's gloves on the bars and an overhead map hanging to the left. B on
   the right hand switches between cockpit and chase view; right stick up / down trims the seat height (remembered).
 - In every race against other riders, X lays a light wall behind you for about two seconds. Rivals that ride into your
@@ -96,7 +101,8 @@ These models are built by Blender scripts (shared helpers in `scripts/blender/ki
 
 | Script | Output in `assets/generated/` |
 |---|---|
-| `build_cockpit_v4.py` | `cockpit-v4.glb` — the cockpit the game uses: a wrap-around binnacle swept on an arc about the rider, a four-layer instrument stack, raked A-pillars, hex vents, a floor pan with pedal plates, and a yoke on one swept crossbar |
+| `build_cockpit_v5.py` | `cockpit-v5.glb` — the cockpit the game uses ("Blade"): a low cowl that narrows to a blade and runs through a hubless front ring, prone grips on struts, swept side fairings, a compact holo display between two gauges, and a rear ring and tail. About 15k triangles, no glass or clear-coat, built for a headset |
+| `build_cockpit_v4.py` | `cockpit-v4.glb` — the previous cockpit: a wrap-around binnacle swept on an arc about the rider, a four-layer instrument stack, raked A-pillars, hex vents, a floor pan with pedal plates, and a yoke on one swept crossbar |
 | `build_cockpit.py`, `build_cockpit_v2.py`, `build_cockpit_v3.py` | earlier cockpits, kept as fallbacks |
 | `build_hauler.py` | `hauler.glb` — the Overwatch Hauler that stands over the Outlands events |
 | `build_arena_kit.py` | `arena-stand.glb`, `arena-pylon.glb` — the stadium around the cycle grid |
@@ -119,7 +125,10 @@ they were generated with an image-to-3D / text-to-3D service. The console is fit
 is not scripted either: it was generated from a written description with a text-to-3D service and is
 fitted (scale, facing, per-rider light colour) in `src/games/cycles/view.ts`.
 
-Run `npm run assets:sync` afterwards to copy it into `public/game-assets/`.
+Run `npm run assets:sync` afterwards to copy it into `public/game-assets/`. Sync also runs `scripts/build-lods.mjs`
+(`npm run assets:lod` on its own), which writes `*.lod.glb` low-detail copies of the rival machines and riders
+(geometry only: at runtime they borrow the full model's materials and clips) and simplifies the disc pedestal from
+its source in `assets/`.
 
 Voice, effects, ambience and 360° backdrops the build is ready for but does not yet have are listed with their
 generation prompts and durations in `assets/PRODUCTION-BRIEF.md`. Each one drops in by file name with no code change.
@@ -127,6 +136,21 @@ generation prompts and durations in `assets/PRODUCTION-BRIEF.md`. Each one drops
 The city backdrops are JPEG conversions of four of the supplied panoramic renders (`assets/generated/panoramas/`).
 The sky dome maps each one as a band around the horizon, mirrored across the back half so it wraps without a seam.
 The VR hands are the supplied rigged glove model, posed in code (`src/engine/hands.ts`).
+
+## Performance budget (VR)
+
+A standalone headset draws every frame twice. What keeps it inside budget, and where each lever lives:
+
+- Eye buffer at the runtime default on Medium (`setFramebufferScaleFactor`, `src/engine/xr.ts`), 72 Hz lock, and a
+  frame-time governor in `App.govern` that pulls LOD distances in, thins particles and raises foveation when frames
+  run long, then eases back.
+- Distance LODs for rival machines (30 m) and riders (42 m) in `CycleView.pose`, scaled by `engine.lodScale`.
+- Skinned meshes are frustum-culled with padded rest-pose bounds (`cullSkinned` in `src/engine/assets.ts`).
+- Shaders are prewarmed at load (`App.prewarm`), so nothing compiles mid-race.
+- Ambient sky traffic and beacons (`src/engine/ambient.ts`) are one instanced draw each, animated on the GPU.
+
+To measure: build, `npx vite preview --port 5189`, then load `?play=race:20&nosplash&qa` in Playwright, call
+`__GAME__.debugAdvance(7)` and read `__GAME__.engine.info()` (triangles and draw calls for the last frame).
 
 ## Layout
 
