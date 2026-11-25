@@ -9,7 +9,7 @@ export interface Settings {
   vr: { snapTurn: boolean; snapAngle: number; seated: boolean; vignette: number; throwMode: 'aim' | 'gesture'; moveSpeed: number; height: number; leftHanded: boolean; /** cockpit seat trim in metres, set with the right stick while riding */ seat: number; /** where the overhead map sits on a cycle */ map: 'left' | 'right' | 'far-left' | 'far-right' | 'top' | 'off'; cycleView: 'auto' | 'cockpit' | 'chase' };
   difficulty: DifficultyId; cycleCamera: 'chase' | 'cockpit'; skin: string; cycle: string; trail: string; /** which disc model the player throws */ disc: string;
 }
-export interface TierRecord { best: number; difficulty: DifficultyId; time: number; clears: number; scoring: number }
+export interface TierRecord { best: number; difficulty: DifficultyId; time: number; clears: number; scoring: number; /** best mastery stars, 0-3 */ stars?: number }
 export interface SaveData {
   version: number; settings: Settings; completed: Record<string, TierRecord>;
   endless: Record<string, { bestWave: number; bestScore: number; seed: number }>;
@@ -75,10 +75,12 @@ export class SaveStore {
     if (!this.db) return;
     await new Promise<void>((res) => { try { const tx = this.db!.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(snap, KEY); tx.oncomplete = () => res(); tx.onerror = () => res(); } catch { res(); } });
   }
-  recordTier(key: string, score: number, time: number, difficulty: DifficultyId) {
+  recordTier(key: string, score: number, time: number, difficulty: DifficultyId, stars = 0) {
     const prev = this.data.completed[key];
-    this.data.completed[key] = { best: Math.max(prev?.best ?? 0, score), difficulty: prev && prev.best > score ? prev.difficulty : difficulty, time: prev ? Math.min(prev.time, time) : time, clears: (prev?.clears ?? 0) + 1, scoring: SCORING_VERSION };
+    this.data.completed[key] = { best: Math.max(prev?.best ?? 0, score), difficulty: prev && prev.best > score ? prev.difficulty : difficulty, time: prev ? Math.min(prev.time, time) : time, clears: (prev?.clears ?? 0) + 1, scoring: SCORING_VERSION, stars: Math.max(prev?.stars ?? 0, stars) };
   }
+  /** Total mastery stars earned across a list of tier keys. */
+  stars(keys: string[]) { let n = 0; for (const k of keys) n += this.data.completed[k]?.stars ?? 0; return n; }
   recordScore(entry: SaveData['scores'][number]) { const s = this.data.scores; s.push(entry); s.sort((a, b) => b.score - a.score); if (s.length > 40) s.length = 40; }
   unlock(ids: readonly string[]): string[] { const fresh: string[] = []; for (const id of ids) if (!this.data.unlocks.includes(id)) { this.data.unlocks.push(id); fresh.push(id); } return fresh; }
 }

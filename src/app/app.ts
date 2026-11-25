@@ -16,6 +16,7 @@ import { DIFFICULTIES, type DifficultyId, type GameMode, type TierDefinition } f
 import { ACHIEVEMENTS, TRACKS, cosmetic, tierKey, unlockedCount, type TrackId } from '../progression/rewards';
 import { endlessTier } from '../progression/director';
 import { RACE_PLACE_POINTS } from '../progression/scoring';
+import { medalResult, starCount, type Goal } from '../progression/medals';
 import type { BaseSession, Ctx, SessionResult } from './context';
 import { createSession, sessionAssets } from './sessions';
 import { briefingScreen, cycleScreen, mainScreen, pauseScreen, resultsScreen } from './screens';
@@ -156,13 +157,15 @@ export class App {
       else { won = c.stagePoints >= need; r.won = won; r.headline = won ? 'CHAMPIONSHIP WON' : 'CHAMPIONSHIP LOST'; r.detail = won ? tier.name : `Needed ${need} points`; }
     }
     let unlocks: string[] = []; let best = 0;
+    // mastery: read from this run's own stats (on a multi-stage event, the final stage decides)
+    const medals: Goal[] = c.endless ? [] : medalResult(tier, won, (ses as any).sim?.stats); let prevStars = 0;
     if (c.endless) {
       const e = c.endless; e.score += score; const rec = data.endless[e.mode] ?? { bestWave: 0, bestScore: 0, seed: e.seed };
       if (won) { if (e.wave > rec.bestWave) { rec.bestWave = e.wave; rec.seed = e.seed; } next = () => this.startEndless(e.mode, e.wave + 1, e.seed, e.score); nextLabel = `Wave ${e.wave + 1}`; nextSub = endlessTier(e.mode, e.wave + 1, e.seed).name; }
       rec.bestScore = Math.max(rec.bestScore, e.score); data.endless[e.mode] = rec; best = rec.bestScore; extra.push(['Run total', e.score.toLocaleString()], ['Best wave', String(rec.bestWave)], ['Seed', String(e.seed)]);
       if (!won) st.recordScore({ mode: e.mode, tier: e.wave, name: `Endless wave ${e.wave}`, score: e.score, difficulty: diff, date: Date.now() });
     } else if (won) {
-      st.recordTier(tierKey(tier), score, r.time, diff); best = data.completed[tierKey(tier)].best; unlocks = st.unlock(tier.unlocks).map((u) => cosmetic(u)?.label ?? u.replace(':', ' · '));
+      prevStars = data.completed[tierKey(tier)]?.stars ?? 0; st.recordTier(tierKey(tier), score, r.time, diff, starCount(medals)); best = data.completed[tierKey(tier)].best; unlocks = st.unlock(tier.unlocks).map((u) => cosmetic(u)?.label ?? u.replace(':', ' · '));
       st.recordScore({ mode: tier.mode, tier: tier.id, name: tier.name, score, difficulty: diff, date: Date.now() });
       const track = c.track as TrackId, list = TRACKS[track].tiers, i = list.indexOf(tier);
       if (i + 1 < list.length) { const nt = list[i + 1]; next = () => { this.current = { track, tier: nt, stage: 0, stagePoints: 0, salt: 0 }; this.launch(); }; nextLabel = 'Continue'; nextSub = `Tier ${nt.id} · ${nt.name}`; }
@@ -172,7 +175,8 @@ export class App {
     const sim: any = (ses as any).sim; if (tier.mode === 'discs') { data.totals.parries += sim.stats.parries; data.totals.ricochets += sim.stats.ricochetHits; data.totals.shattered += sim.stats.kills; } else if (tier.mode === 'cycle-combat') data.totals.traps += sim.stats.trapKills; else if (won) data.totals.raceWins++;
     for (const a of ACHIEVEMENTS) if (!data.achievements.includes(a.id) && a.test(data)) { data.achievements.push(a.id); unlocks.push('Achievement — ' + a.label); }
     st.save();
-    this.menu.reset(() => resultsScreen(this, r, { unlocks, next, nextLabel, nextSub, extra, best, kicker }));
+    if (starCount(medals) > prevStars && prevStars > 0) unlocks.push(`New best: ${starCount(medals)} stars`);
+    this.menu.reset(() => resultsScreen(this, r, { unlocks, next, nextLabel, nextSub, extra, best, kicker, medals }));
   }
 
   // ------------------------------------------------------------ frame

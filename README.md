@@ -11,6 +11,10 @@ and in VR (WebXR):
 
 36 authored tiers per game (72 total), endless seeded modes, four difficulties, local save.
 
+Every authored tier has three-star mastery: the clear, plus two skill goals that point at what the mode rewards
+(Disc Arena: take little damage, play ricochets and parries; Combat: trap rivals on your wall, ride close calls; Racing:
+win or ride clean, and take a rival down or keep off the rails). Goals show on the briefing, results and tier select.
+
 Disc tiers rotate three fight-changing systems through the ladder: **Rally** (clean exchanges make your throws faster
 and harder until you take a hit), **Power nodes** (Split, Pierce and Mend on your other decks) and **Core breach** (a
 shielded core behind the rival line whose turning gap is a second way to win). Cycle events open with every rider

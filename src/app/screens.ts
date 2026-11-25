@@ -8,6 +8,7 @@ import { VEHICLES } from '../games/cycles/race';
 import { ARCHETYPES } from '../games/discs/archetypes';
 import { fmtTime, type SessionResult } from './context';
 import { howToScreen } from './howto';
+import { medalGoals, starText, type Goal } from '../progression/medals';
 
 const pct = (v: number) => Math.round(v * 100) + '%';
 const MODE_ICON: Record<GameMode, string> = { discs: '◎', 'cycle-combat': '▚', 'cycle-race': '»' };
@@ -52,9 +53,10 @@ function trackPick(app: App): Screen {
 
 export function tierScreen(app: App, track: TrackId): Screen {
   const s = app.store.data, T = TRACKS[track], open = unlockedCount(s, track);
-  const tiles: Item[] = T.tiers.map((t, i) => { const rec = s.completed[tierKey(t)]; return { kind: 'tile' as const, no: String(t.id).padStart(2, '0'), label: t.name, icon: MODE_ICON[t.mode], tag: rec ? rec.best.toLocaleString() : i < open ? 'OPEN' : 'LOCKED', state: rec ? 'done' : i < open ? 'open' : 'locked', boss: !!t.boss, action: () => app.startTier(track, t) }; });
+  const tiles: Item[] = T.tiers.map((t, i) => { const rec = s.completed[tierKey(t)]; return { kind: 'tile' as const, no: String(t.id).padStart(2, '0'), label: t.name, icon: MODE_ICON[t.mode], tag: rec ? `${starText(rec.stars ?? 0)} ${rec.best.toLocaleString()}` : i < open ? 'OPEN' : 'LOCKED', state: rec ? 'done' : i < open ? 'open' : 'locked', boss: !!t.boss, action: () => app.startTier(track, t) }; });
   for (const m of T.endless) { const ok = endlessUnlocked(s, m), e = s.endless[m]; tiles.push({ kind: 'tile', no: '∞', label: 'Endless ' + MODE_LABEL[m].replace('Cycle ', ''), icon: MODE_ICON[m], tag: ok ? (e ? 'WAVE ' + e.bestWave : 'OPEN') : 'LOCKED', state: ok ? 'open' : 'locked', action: () => app.startEndless(m) }); }
-  return { id: 'tiers-' + track, kicker: 'Tier Select', title: T.label, wide: true, text: 'Every fifth tier changes the rules. Clear a tier to open the next; clear them all to unlock Endless.', items: [difficultyItem(app)], tiles,
+  const got = app.store.stars(T.tiers.map((t) => tierKey(t)));
+  return { id: 'tiers-' + track, kicker: 'Tier Select', title: T.label, wide: true, text: `Every fifth tier changes the rules. Clear a tier to open the next; clear them all to unlock Endless. Mastery: ${got} / ${T.tiers.length * 3} ★`, items: [difficultyItem(app)], tiles,
     side: { title: 'Legend', rows: [['◎', 'Disc Arena'], ['▚', 'Cycle Combat'], ['»', 'Cycle Racing'], ['Red frame', 'Boss encounter'], ['∞', 'Endless (seeded)']] } };
 }
 
@@ -67,6 +69,8 @@ export function briefingScreen(app: App, track: TrackId | 'endless', t: TierDefi
   else rows.push(['Format', String(t.params.format)], ['Field', String((t.enemies[0]?.count ?? 0) + 1)]);
   if (t.modifiers.length) rows.push(['Modifiers', t.modifiers.join(', ').replace(/-/g, ' ')]);
   rows.push(['Score multiplier', '×' + (t.scoreMul * DIFFICULTIES[app.store.data.settings.difficulty].scoreMul).toFixed(2)]);
+  // mastery goals, with the stars already earned on this tier
+  const goals = medalGoals(t), have = app.store.data.completed[tierKey(t)]?.stars ?? 0; goals.forEach((g, i) => rows.push([`${i < have ? '★' : '☆'} ${i + 1}`, g]));
   return { id: 'brief', kicker: `${track === 'endless' ? 'Endless' : TRACKS[track].label} · Tier ${t.endless ? t.id - 1000 : String(t.id).padStart(2, '0')}`, title: t.name, text: t.brief,
     items: [{ kind: 'button', label: 'Initialise', primary: true, sub: mode, action: () => app.launch() }, { kind: 'button', label: 'How to play', sub: 'Goal, controls and what this tier adds', action: () => app.menu.open(() => howToScreen(app, t)) }, difficultyItem(app), { kind: 'button', label: 'Back', action: () => app.menu.back() }], side: { title: 'Briefing', rows } };
 }
@@ -181,12 +185,13 @@ export function pauseScreen(app: App): Screen {
       { kind: 'button', label: 'Settings', action: () => app.menu.open(() => settingsScreen(app, true)) }, { kind: 'button', label: 'Quit to main menu', action: () => app.toMenu() }] };
 }
 
-export function resultsScreen(app: App, r: SessionResult, info: { unlocks: string[]; next: (() => void) | null; nextLabel: string; nextSub?: string; extra: [string, string][]; best: number; kicker: string }): Screen {
+export function resultsScreen(app: App, r: SessionResult, info: { unlocks: string[]; next: (() => void) | null; nextLabel: string; nextSub?: string; extra: [string, string][]; best: number; kicker: string; medals?: Goal[] }): Screen {
   const items: Item[] = [];
   if (info.next) items.push({ kind: 'button', label: info.nextLabel, sub: info.nextSub, primary: true, action: info.next });
   items.push({ kind: 'button', label: r.won ? 'Replay tier' : 'Retry', primary: !info.next, action: () => app.launch(true) }, { kind: 'button', label: 'Change mode', action: () => app.toMenu(true) }, { kind: 'button', label: 'Main menu', action: () => app.toMenu() });
   items.push({ kind: 'title', label: 'Score' }); for (const [l, v] of r.lines) items.push({ kind: 'row', label: l, value: (v >= 0 ? '+' : '') + v.toLocaleString() });
   items.push({ kind: 'row', label: 'Total', value: r.score.toLocaleString(), total: true });
+  if (info.medals?.length) { const n = info.medals.filter((g) => g.met).length; items.push({ kind: 'title', label: `Mastery  ${starText(n)}` }); for (const g of info.medals) items.push({ kind: 'row', label: g.label, value: g.met ? '★' : '☆' }); }
   return { id: 'results', kicker: info.kicker, head: { cls: r.won ? 'win' : 'lose', text: r.headline }, title: r.won ? r.detail : 'What happened', text: r.won ? undefined : r.detail, items, dim: true, wide: true, noBack: true, unlocks: info.unlocks,
     side: { title: 'Run statistics', rows: [...r.stats, ...info.extra, ['Personal best', info.best ? info.best.toLocaleString() : '—']] } };
 }
