@@ -10,7 +10,7 @@ import { angleLerp, clamp, damp, lerp, smooth } from '../../engine/math';
 import { buildCombatConfig, combatRivalModels } from '../../progression/build';
 import { cycleFinalScore } from '../../progression/scoring';
 import { DIFFICULTIES, type DifficultyId, type TierDefinition } from '../../progression/types';
-import { CombatSim, DIRS, type Cycle, type CycleIntent } from './combat';
+import { AIR_TIME, CombatSim, DIRS, airHeight, type Cycle, type CycleIntent } from './combat';
 import { CYCLE_INTRO, introCamera, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, WallTrail, css, cycleAssets, playerTrail } from './view';
 
 const yawOf = (dir: number) => Math.atan2(DIRS[dir][0], DIRS[dir][1]);
@@ -64,6 +64,7 @@ export class CombatSession extends BaseSession {
     }
     this.lines = new SpeedLines(th.accent); W.add(this.lines.mesh);
     this.ambient = new Ambient(th, { cx: 0, cz: 0, groundY: 0, rMin: H + 60, rMax: H + 230, hMin: 30, hMax: 110, seed: tier.id * 31, xr: ctx.xr.presenting, quality: ctx.settings.quality }); W.add(this.ambient.group);
+    for (const rp of sim.ramps) W.add(this.rampMesh(rp.x, rp.z, rp.dir, rp.hw, rp.len));
     W.add(ctx.vfx.group); ctx.vfx.clear(); eng.setWorld(W);
     ctx.hud.show('combat'); ctx.audio.playMusic('cycles'); ctx.audio.ambience(tier.environment); ctx.audio.intensity = 0.3; ctx.audio.setCrowdBed(this.crowd ? 0.02 : 0);
     ctx.hud.banner(`TIER ${tier.endless ? '∞' : String(tier.id).padStart(2, '0')} — ${tier.name.toUpperCase()}`, tier.brief, this.introDur * 1000 - 400);
@@ -168,6 +169,8 @@ export class CombatSession extends BaseSession {
         break;
       }
       case 'trap': audio.say('Trap confirmed.', { quiet: true }); break;
+      case 'jump': audio.sfx('boost', mine ? undefined : { x: e.x, y: 0.5, z: e.z }); vfx.sparks(e.x, 0.3, e.z, col, 24, 6, 0.4, { x: 0, y: 1, z: 0 }); if (mine) { hud.toast('AIRBORNE — NO WALL BEHIND YOU', 'info'); xr.pulse('both', 0.6, 90); input.rumble(0.5, 0.5, 90); } break;
+      case 'land': vfx.ring(e.x, 0.05, e.z, col, 0.4, 5, 0.4); vfx.sparks(e.x, 0.1, e.z, 0xffffff, 30, 7, 0.4); audio.sfx('land', mine ? undefined : { x: e.x, y: 0.5, z: e.z }); if (mine) { engine.addShake(0.45); xr.pulse('both', 0.9, 140); input.rumble(0.9, 0.7, 160); } break;
       case 'nearMiss': audio.sfx('nearMiss'); hud.toast('CLOSE CALL  +60', 'good'); break;
       case 'boost': if (e.on) audio.sfx('boost', mine ? undefined : pos); break;
       case 'grind': break;
@@ -205,7 +208,9 @@ export class CombatSession extends BaseSession {
     sim.cycles.forEach((c, i) => {
       const v = this.cv[i], tr = this.trails[i]; v.root.visible = c.alive;
       const x = c.alive ? lerp(c.px, c.x, alpha) : c.x, z = c.alive ? lerp(c.pz, c.z, alpha) : c.z, [dx, dz] = DIRS[c.dir];
-      if (c.alive) { v.pose(x, 0, z, yawOf(c.dir), dt, c.speed / (sim.cfg.speed * 1.5), true); (v.glow.material as THREE.MeshBasicMaterial).opacity = c.boosting ? 0.6 : c.phaseT > 0 ? 0.1 + 0.3 * Math.abs(Math.sin(t * 30)) : 0.28; v.body.visible = c.phaseT <= 0 || Math.sin(t * 40) > 0; if (c.boosting && Math.random() < 0.6) vfx.sparks(x - dx * 1.3, 0.4, z - dz * 1.3, this.colors[i], 2, 4, 0.3, { x: -dx, y: 0.3, z: -dz }, 2, 0.35); if (c.grind && Math.random() < 0.5) vfx.sparks(x, 0.15, z, 0xffffff, 1, 3, 0.2, undefined, 6, 0.3); if (!c.isPlayer) hums.push({ x, y: 0.8, z, pitch: 70 + c.speed * 2.2, gain: 0.06 }); }
+      // in the air: lifted on the jump arc, nose up on the way up and down on the way in
+      const air = airHeight(c), pitch = c.airT > 0 ? -0.5 * (2 * (c.airT / AIR_TIME) - 1) * 0.55 : 0;
+      if (c.alive) { v.pose(x, air, z, yawOf(c.dir), dt, c.speed / (sim.cfg.speed * 1.5), true, pitch); (v.glow.material as THREE.MeshBasicMaterial).opacity = c.boosting ? 0.6 : c.phaseT > 0 ? 0.1 + 0.3 * Math.abs(Math.sin(t * 30)) : 0.28; v.body.visible = c.phaseT <= 0 || Math.sin(t * 40) > 0; if (c.boosting && Math.random() < 0.6) vfx.sparks(x - dx * 1.3, 0.4, z - dz * 1.3, this.colors[i], 2, 4, 0.3, { x: -dx, y: 0.3, z: -dz }, 2, 0.35); if (c.grind && Math.random() < 0.5) vfx.sparks(x, 0.15, z, 0xffffff, 1, 3, 0.2, undefined, 6, 0.3); if (!c.isPlayer) hums.push({ x, y: 0.8, z, pitch: 70 + c.speed * 2.2, gain: 0.06 }); }
       // no wall exists until the machines are released
       tr.mesh.visible = (this.phase === 'play' || this.phase === 'outro' || this.phase === 'done') && (!c.trailGone || tr.mat.uniforms.uOpacity.value > 0.02); tr.mat.uniforms.uOpacity.value = damp(tr.mat.uniforms.uOpacity.value, c.alive ? 1 : c.trailGone ? 0 : 0.5 + 0.5 * Math.sin(t * 40), c.trailGone ? 6 : 30, dt);
       if (!c.trailGone) tr.update(c.trail, c.alive ? x - dx * 1.25 : c.x, c.alive ? z - dz * 1.25 : c.z, t);
@@ -215,7 +220,7 @@ export class CombatSession extends BaseSession {
     for (const g of this.pick.values()) { g.children[0].rotation.y = t * 2.4; g.children[0].position.y = 1.6 + Math.sin(t * 3) * 0.25; }
     // camera
     this.drones.orbit(dt, 0, 13, 0, sim.half0 * 0.7, this.look.set(lerp(P.px, P.x, alpha), 0.8, lerp(P.pz, P.z, alpha))); this.carrier.update(dt);
-    const px = lerp(P.px, P.x, alpha), pz = lerp(P.pz, P.z, alpha), yaw = yawOf(P.dir), sp01 = P.speed / (sim.cfg.speed * 1.55);
+    const px = lerp(P.px, P.x, alpha), pz = lerp(P.pz, P.z, alpha), yaw = yawOf(P.dir), sp01 = P.speed / (sim.cfg.speed * 1.55), py = airHeight(P);
     const dev = a.device; hud.menuHint = ctl(dev, 'ESC — MENU   ·   C — VIEW', 'START — MENU   ·   RB — VIEW', `HOLD ${xr.labels.menu} — MENU   ·   ${xr.labels.view} — VIEW   ·   ${xr.labels.turn} ↕ — SEAT`);
     if (!this.xr) hud.vrSeat = null;
     // in a headset the view never changes on its own: it is only switched from the pause menu
@@ -237,13 +242,13 @@ export class CombatSession extends BaseSession {
       const back = first ? -EYE.z : 6.4, up = first ? EYE.y : 3.4;
       // right stick up / down trims the seat, so the dash sits where the rider wants it
       const vs = this.ctx.settings.vr; if (first && xr.dashAdjust && this.phase !== 'intro') { vs.seat = clamp((vs.seat ?? 0) + xr.dashAdjust * 0.3 * dt, -0.35, 0.35); this.seatDirty = true; }
-      rig.position.set(px - fx * back - off.x, up + (first ? vs.seat ?? 0 : vs.height) - this.offset.y, pz - fz * back - off.z);
+      rig.position.set(px - fx * back - off.x, py + up + (first ? vs.seat ?? 0 : vs.height) - this.offset.y, pz - fz * back - off.z);
       hud.vrSeat = this.offset; xr.showHands = !first || !!this.start?.handsFree;
-      xr.update(dt, false); engine.vignetteAmount = this.ctx.settings.vr.vignette * clamp(sp01 * (first ? 0.6 : 0.3) + (P.boosting ? 0.2 : 0) + turning * 0.5, 0, 1) * (this.phase === 'play' ? 1 : 0);
+      xr.update(dt, false); engine.vignetteAmount = this.ctx.settings.vr.vignette * clamp(sp01 * (first ? 0.6 : 0.3) + (P.boosting ? 0.2 : 0) + turning * 0.5 + (P.airT > 0 ? 0.35 : 0), 0, 1) * (this.phase === 'play' ? 1 : 0);
     } else if (this.phase !== 'intro') {
       this.camYaw = angleLerp(this.camYaw, yaw, 1 - Math.exp(-(first ? 60 : 7.5) * dt)); const fx = Math.sin(this.camYaw), fz = Math.cos(this.camYaw);
-      if (first) { cam.position.set(px + fx * EYE.z, EYE.y, pz + fz * EYE.z); cam.lookAt(px + fx * 30, 0.95, pz + fz * 30); }
-      else { const out = P.alive ? 1 : 1.6, d = (9.5 + sp01 * 2.2) * out; this.camPos.set(px - fx * d, (4.4 + sp01 * 0.8) * out, pz - fz * d); cam.position.copy(this.camPos); cam.lookAt(px + fx * 9, 1.2, pz + fz * 9); }
+      if (first) { cam.position.set(px + fx * EYE.z, py + EYE.y, pz + fz * EYE.z); cam.lookAt(px + fx * 30, py * 0.6 + 0.95, pz + fz * 30); }
+      else { const out = P.alive ? 1 : 1.6, d = (9.5 + sp01 * 2.2) * out; this.camPos.set(px - fx * d, (4.4 + sp01 * 0.8) * out + py * 0.7, pz - fz * d); cam.position.copy(this.camPos); cam.lookAt(px + fx * 9, 1.2 + py * 0.5, pz + fz * 9); }
       const tf = engine.reducedMotion ? 64 : (first ? 74 : 62) + sp01 * (first ? 8 : 16) + (P.boosting ? 6 : 0); if (Math.abs(cam.fov - tf) > 0.1) { cam.fov = damp(cam.fov, tf, 5, dt); cam.updateProjectionMatrix(); }
     }
     this.lines.update(px, 0, pz, yaw, P.speed, t, this.phase === 'play' && !engine.reducedMotion && !this.xr ? clamp((sp01 - 0.55) * 2.2, 0, 1) : 0);
@@ -257,8 +262,23 @@ export class CombatSession extends BaseSession {
     if (this.phase === 'play') audio.intensity = damp(audio.intensity, clamp(0.55 + (wall < 14 ? 0.25 : 0) + sim.aliveRivals() * 0.05 + (P.boosting ? 0.1 : 0), 0, 1), 2, dt);
     hud.update({ tier: this.tier, speed: P.speed, boost: P.boost, boosting: P.boosting, grind: P.grind, power: P.power, rivals: sim.aliveRivals(), score: Math.round(sim.stats.score), wall, traps: sim.stats.trapKills, shrinking: pulse,
       // built only on the frames the map is redrawn (every third), not every frame: less garbage, fewer GC pauses
-      radar: this.radarFn ??= () => ({ kind: 'grid', half: this.sim.half, half0: this.sim.half0, obstacles: this.sim.obstacles, pickups: this.sim.pickups, cycles: this.sim.cycles.map((c, i) => ({ x: c.x, z: c.z, h: yawOf(c.dir), color: css(this.colors[i]), player: c.isPlayer, alive: c.alive, gone: c.trailGone, trail: c.trail })) }) });
+      radar: this.radarFn ??= () => ({ kind: 'grid', half: this.sim.half, half0: this.sim.half0, obstacles: this.sim.obstacles, pickups: this.sim.pickups, cycles: this.sim.cycles.map((c, i) => ({ x: c.x, z: c.z, h: yawOf(c.dir), color: css(this.colors[i]), player: c.isPlayer, alive: c.alive, gone: c.trailGone, trail: c.trail, air: c.airT > 0 })) }) });
     this.applyKillCam(dt);
+  }
+  /**
+   * A jump ramp: a dark wedge rising to 1.1 m along its launch direction, with lit side rails and three chevrons that
+   * run up its face toward the lip, so it reads as "ride up this way" from anywhere on the grid.
+   */
+  private rampMesh(x: number, z: number, dir: number, hw: number, len: number) {
+    const g = new THREE.Group(), H = 1.1, col = this.th.accent2, prof = new THREE.Shape(); prof.moveTo(-len / 2, 0); prof.lineTo(len / 2, H); prof.lineTo(len / 2, 0); prof.closePath();
+    const body = new THREE.Mesh(new THREE.ExtrudeGeometry(prof, { depth: hw * 2, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: 0x07090e, metalness: 0.7, roughness: 0.35 })); body.geometry.translate(0, 0, -hw); g.add(body);
+    const lit = new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.6) }), slope = Math.atan2(H, len), sl = Math.hypot(len, H);
+    for (const sz of [-1, 1]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(sl, 0.07, 0.07), lit); rail.position.set(0, H / 2 + 0.03, sz * (hw - 0.04)); rail.rotation.z = slope; g.add(rail); }
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, hw * 2), lit); lip.position.set(len / 2, H + 0.02, 0); g.add(lip);
+    const ch = new THREE.Shape(); ch.moveTo(-0.35, -0.9); ch.lineTo(0.25, 0); ch.lineTo(-0.35, 0.9); ch.lineTo(-0.6, 0.9); ch.lineTo(0, 0); ch.lineTo(-0.6, -0.9); ch.closePath();
+    const chevG = new THREE.ShapeGeometry(ch); chevG.rotateX(-Math.PI / 2);
+    for (let k = 0; k < 3; k++) { const u = (k + 1) / 4, m = new THREE.Mesh(chevG, lit); m.position.set(-len / 2 + u * len, u * H + 0.03, 0); m.rotation.z = slope; g.add(m); }
+    const [dx, dz] = DIRS[dir]; g.rotation.y = Math.atan2(-dz, dx); g.position.set(x, 0, z); return g;
   }
   private radarFn: (() => any) | null = null; private ambient!: Ambient;
   dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }

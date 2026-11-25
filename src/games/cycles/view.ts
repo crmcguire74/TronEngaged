@@ -466,6 +466,8 @@ export class WallTrail {
     const p = this.pos, uv = this.uv; [a, b, c, d].forEach((q, k) => p.set(q, (v + k) * 3)); [ua, ub, uc, ud].forEach((q, k) => uv.set(q, (v + k) * 2));
   }
   private seg(i: number, ax: number, az: number, bx: number, bz: number, u0: number) {
+    // a gap in the trail (the cycle was in the air): collapse all three quads to nothing
+    if (ax !== ax || bx !== bx) { const v = i * VPS; this.pos.fill(0, v * 3, (v + VPS) * 3); return u0; }
     const len = Math.hypot(bx - ax, bz - az), v = i * VPS, u1 = u0 + len;
     // across the segment (a zero-length head segment at the start of a run falls back to a fixed axis)
     const nx = len > 1e-4 ? -(bz - az) / len : 1, nz = len > 1e-4 ? (bx - ax) / len : 0, cw = CAP_W / 2, fw = FLOOR_W / 2, fy = 0.02;

@@ -80,7 +80,7 @@ export class Hud implements HudApi {
     if (r.kind === 'grid') {
       const k = (S / 2 - 26) / r.half0; c.fillStyle = 'rgba(79,227,255,0.05)'; c.fillRect(-r.half * k, -r.half * k, r.half * 2 * k, r.half * 2 * k); c.strokeStyle = 'rgba(160,220,255,0.75)'; c.lineWidth = 2; c.strokeRect(-r.half * k, -r.half * k, r.half * 2 * k, r.half * 2 * k);
       c.fillStyle = 'rgba(160,220,255,0.3)'; for (const o of r.obstacles) { if (o.state === 'off') continue; c.globalAlpha = o.state === 'warn' ? 0.4 : 1; c.fillRect((o.x - o.hx) * k, (o.z - o.hz) * k, o.hx * 2 * k, o.hz * 2 * k); } c.globalAlpha = 1;
-      for (const cy of r.cycles) { if (cy.gone) continue; c.strokeStyle = cy.color; c.lineWidth = cy.player ? 3 : 2; c.lineJoin = 'round'; c.beginPath(); const t = cy.trail; c.moveTo(t[0] * k, t[1] * k); for (let i = 2; i < t.length; i += 2) c.lineTo(t[i] * k, t[i + 1] * k); c.lineTo(cy.x * k, cy.z * k); c.stroke(); }
+      for (const cy of r.cycles) { if (cy.gone) continue; c.strokeStyle = cy.color; c.lineWidth = cy.player ? 3 : 2; c.lineJoin = 'round'; c.beginPath(); const t = cy.trail; let pen = false; for (let i = 0; i < t.length; i += 2) { if (t[i] !== t[i]) { pen = false; continue; } if (pen) c.lineTo(t[i] * k, t[i + 1] * k); else { c.moveTo(t[i] * k, t[i + 1] * k); pen = true; } } if (pen && !cy.air) c.lineTo(cy.x * k, cy.z * k); c.stroke(); }
       for (const p of r.pickups) if (p.alive) { c.fillStyle = '#ffe14a'; c.save(); c.translate(p.x * k, p.z * k); c.rotate(0.785); c.fillRect(-3.5, -3.5, 7, 7); c.restore(); }
       for (const cy of r.cycles) if (cy.alive && !cy.player) arrow(cy.x * k, cy.z * k, cy.h ?? 0, cy.color, 5, false);
       for (const cy of r.cycles) if (cy.alive && cy.player) arrow(cy.x * k, cy.z * k, cy.h ?? 0, cy.color, 6, true);

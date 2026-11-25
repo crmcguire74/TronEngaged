@@ -100,3 +100,36 @@ describe('race discs', () => {
     sim.flying.length = 0; R.discCd = 0; sim.throwDisc(R); expect(sim.flying).toHaveLength(0); // the shared timer is still running
   });
 });
+
+describe('combat jump ramps', () => {
+  /** One player, one far-off rival, four ramps; the player is put just short of the ramp that launches along +X. */
+  function rampSim() {
+    // two rivals: R carries whatever wall a test needs; the other stays alive far off, so the round stays open
+    const cfg: CombatConfig = { half: 70, seed: 3, speed: 24, rivals: [{ profile: 'evader', skill: 0.1, model: 'ember' }, { profile: 'evader', skill: 0.1, model: 'jade' }], modifiers: ['ramps'], pillars: 0, aiSkill: 0, hazardMul: 1, resources: 1 } as any;
+    const sim = new CombatSim(cfg); const P = sim.player, rp = sim.ramps.find((r) => DIRS[r.dir][0] === 1)!, R = sim.cycles[1], far = sim.cycles[2];
+    for (const c of [R, far]) { c.x = -60; c.z = -62; c.px = c.x; c.pz = c.z; c.trail = [c.x, c.z]; c.dir = 1; } far.x = far.px = -50; far.trail = [far.x, far.z];
+    P.dir = rp.dir; P.x = rp.x - rp.len / 2 - 2; P.z = rp.z; P.px = P.x; P.pz = P.z; P.trail = [P.x, P.z]; P.speed = 24;
+    return { sim, P, rp, R };
+  }
+  const idle: CycleIntent = { turn: 0, accel: 0, boost: false, ability: false };
+  it('launches a rider who rides up a ramp in its direction, and leaves a gap in the trail', () => {
+    const { sim, P } = rampSim(); let jumped = false, landed = false;
+    for (let i = 0; i < 2 / DT && !landed; i++) { sim.events.length = 0; sim.step(DT, idle); for (const e of sim.events as any[]) { if (e.type === 'jump' && e.player) jumped = true; if (e.type === 'land' && e.player) landed = true; } }
+    expect(jumped).toBe(true); expect(landed).toBe(true); expect(P.alive).toBe(true);
+    const gaps = P.trail.filter((v) => v !== v).length; expect(gaps).toBe(2);
+  });
+  it('flies over a wall in its path, but a landing on one is a crash', () => {
+    /** A finished wall from a rider that stopped at its far end (a dead rider's wall runs on to where it stopped). */
+    const wall = (o: ReturnType<typeof rampSim>, x0: number, z0: number, x1: number, z1: number) => { o.R.trail = [x0, z0]; o.R.x = o.R.px = x1; o.R.z = o.R.pz = z1; o.R.alive = false; o.R.trailGone = false; o.R.deathT = 1e9; };
+    const over = rampSim(); const wx = over.rp.x + 6; wall(over, wx, over.rp.z - 10, wx, over.rp.z + 10);
+    for (let i = 0; i < 1.5 / DT; i++) over.sim.step(DT, idle); expect(over.P.alive).toBe(true);
+    const onto = rampSim(); const land = onto.rp.x + onto.rp.len / 2 + 24 * 0.85; wall(onto, land - 3, onto.rp.z, land + 3, onto.rp.z);
+    let crashed = false; for (let i = 0; i < 2 / DT && !crashed; i++) { onto.sim.events.length = 0; onto.sim.step(DT, idle); crashed = (onto.sim.events as any[]).some((e) => e.type === 'crash' && e.player); }
+    expect(crashed).toBe(true);
+  });
+  it('does not launch a rider crossing a ramp sideways, and has no ramps on other tiers', () => {
+    const { sim, P, rp } = rampSim(); P.dir = 1; P.x = rp.x; P.z = rp.z - 8; P.px = P.x; P.pz = P.z; P.trail = [P.x, P.z];
+    let jumped = false; for (let i = 0; i < 0.8 / DT; i++) { sim.events.length = 0; sim.step(DT, idle); jumped ||= (sim.events as any[]).some((e) => e.type === 'jump' && e.player); }
+    expect(jumped).toBe(false); expect(new CombatSim(buildCombatConfig(COMBAT_TIERS[0], 'standard')).ramps).toHaveLength(0);
+  });
+});

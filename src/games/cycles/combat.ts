@@ -11,8 +11,21 @@ export interface CombatConfig {
   half: number; seed: number; speed: number; rivals: readonly RivalDef[]; modifiers: readonly string[];
   pillars: number; aiSkill: number; hazardMul: number; resources: number;
 }
+/**
+ * Jump ramp ('ramps' tiers): riding up it in its launch direction throws the cycle into the air for AIR_TIME seconds.
+ * In the air no wall is laid (the trail has a gap, marked by a NaN vertex pair) and walls are flown over; the arena
+ * edge and pillars still count, and landing on a wall is a crash, so a jump is both an escape and a gamble.
+ */
+export interface Ramp { x: number; z: number; dir: number; hw: number; len: number }
+export const AIR_TIME = 0.85, AIR_APEX = 3.2;
+/** The ramp's footprint: len along its launch direction, 2 * hw across it. */
+export function rampContains(rp: Ramp, x: number, z: number) { const alongX = DIRS[rp.dir][0] !== 0; return Math.abs(x - rp.x) < (alongX ? rp.len / 2 : rp.hw) && Math.abs(z - rp.z) < (alongX ? rp.hw : rp.len / 2); }
+/** True for a vertex that marks a gap in a trail (written while a cycle is in the air). */
+export const isGap = (v: number) => v !== v;
+/** Height of a cycle above the grid, from its time in the air. */
+export const airHeight = (c: { airT: number }) => { if (c.airT <= 0) return 0; const u = 1 - c.airT / AIR_TIME; return 4 * AIR_APEX * u * (1 - u); };
 export interface Cycle {
-  id: number; isPlayer: boolean; model: string; alive: boolean;
+  id: number; isPlayer: boolean; model: string; alive: boolean; /** seconds of flight left after a ramp */ airT: number;
   x: number; z: number; px: number; pz: number; dir: number; speed: number; boost: number; boosting: boolean;
   queue: number[]; sinceTurn: number; turnT: number;
   /** Flat [x,z,...] trail vertices; the live segment runs from the last vertex to (x,z). */
@@ -30,7 +43,7 @@ const MIN_TURN = 0.9, TRAIL_HW = 0.14, BODY_HW = 0.22;
 
 export class CombatSim {
   readonly cfg: CombatConfig; readonly rng: Rng;
-  cycles: Cycle[] = []; obstacles: Obstacle[] = []; pickups: Pickup[] = []; lanes: IonLane[] = []; events: SimEvent[] = [];
+  ramps: Ramp[] = []; cycles: Cycle[] = []; obstacles: Obstacle[] = []; pickups: Pickup[] = []; lanes: IonLane[] = []; events: SimEvent[] = [];
   time = 0; state: 'active' | 'won' | 'lost' = 'active';
   half: number; readonly half0: number; readonly gw: number; grid: Uint8Array; stamp: Uint32Array; stampId = 0;
   stats: CycleStats = { trapKills: 0, rivalsDown: 0, grindMeters: 0, nearMisses: 0, time: 0, score: 0, pickups: 0 };
@@ -48,11 +61,13 @@ export class CombatSim {
     for (let i = 0; i < cfg.rivals.length; i++) { const lane = (i % 2 ? 1 : -1) * (H * 0.16 + Math.floor(i / 2) * H * 0.2); spots.push([Math.round(lane), -H * 0.72, 1]); }
     for (let i = 0; i < n; i++) {
       const [x, z, dir] = spots[i % spots.length]; const r = i === 0 ? null : cfg.rivals[i - 1];
-      const c: Cycle = { id: i + 1, isPlayer: i === 0, model: r ? r.model : 'azure', alive: true, x, z, px: x, pz: z, dir, speed: cfg.speed * 0.6, boost: i === 0 ? clamp(0.6 * cfg.resources, 0, 1) : 0.5, boosting: false, queue: [], sinceTurn: 99, turnT: 1, trail: [x, z], trailGone: false, deathT: 0, power: null, phaseT: 0, shockT: 0, grind: false, ai: null };
+      const c: Cycle = { id: i + 1, isPlayer: i === 0, model: r ? r.model : 'azure', alive: true, airT: 0, x, z, px: x, pz: z, dir, speed: cfg.speed * 0.6, boost: i === 0 ? clamp(0.6 * cfg.resources, 0, 1) : 0.5, boosting: false, queue: [], sinceTurn: 99, turnT: 1, trail: [x, z], trailGone: false, deathT: 0, power: null, phaseT: 0, shockT: 0, grind: false, ai: null };
       if (r) c.ai = { profile: r.profile, skill: clamp(r.skill + cfg.aiSkill, 0.05, 1), thinkT: this.rng.range(0, 0.1), slot: i, lastTurn: 0, intent: { turn: 0, accel: 0, boost: false, ability: false } };
       this.cycles.push(c);
     }
     this.player = this.cycles[0];
+    // jump ramps: a pinwheel of four round the centre, each launching along the circle, clear of the spawn lanes
+    if (cfg.modifiers.includes('ramps')) { const o = Math.round(H * 0.42); this.ramps.push({ x: o, z: o, dir: 2, hw: 2.6, len: 6 }, { x: -o, z: o, dir: 3, hw: 2.6, len: 6 }, { x: -o, z: -o, dir: 0, hw: 2.6, len: 6 }, { x: o, z: -o, dir: 1, hw: 2.6, len: 6 }); }
     // ion lanes: a cross of fast strips (offset so they do not run down the spawn lanes)
     if (cfg.modifiers.includes('ion-lanes')) { const o = Math.round(H * 0.34); this.lanes.push({ x: 0, z: o, len: H * 0.82, hw: 2.2, axis: 0 }, { x: 0, z: -o, len: H * 0.82, hw: 2.2, axis: 0 }); if (cfg.modifiers.includes('ion-grid')) this.lanes.push({ x: o + 6, z: 0, len: H * 0.6, hw: 2.2, axis: 1 }, { x: -o - 6, z: 0, len: H * 0.6, hw: 2.2, axis: 1 }); }
     // static pillars, kept clear of spawn lanes
@@ -87,7 +102,7 @@ export class CombatSim {
       this.stepCycle(c, c.isPlayer ? intent : aiDrive(this, c, dt), dt);
     }
     // head-on contact
-    for (let i = 0; i < this.cycles.length; i++) for (let j = i + 1; j < this.cycles.length; j++) { const a = this.cycles[i], b = this.cycles[j]; if (a.alive && b.alive && a.phaseT <= 0 && b.phaseT <= 0 && Math.abs(a.x - b.x) < 0.9 && Math.abs(a.z - b.z) < 0.9) { this.crash(a, 'head', b.id); this.crash(b, 'head', a.id); } }
+    for (let i = 0; i < this.cycles.length; i++) for (let j = i + 1; j < this.cycles.length; j++) { const a = this.cycles[i], b = this.cycles[j]; if (a.alive && b.alive && a.phaseT <= 0 && b.phaseT <= 0 && a.airT <= 0 && b.airT <= 0 && Math.abs(a.x - b.x) < 0.9 && Math.abs(a.z - b.z) < 0.9) { this.crash(a, 'head', b.id); this.crash(b, 'head', a.id); } }
     if (!this.player.alive) { this.state = 'lost'; this.events.push({ type: 'lose' }); }
     else if (this.aliveRivals() === 0) { this.state = 'won'; this.events.push({ type: 'win' }); }
   }
@@ -95,7 +110,7 @@ export class CombatSim {
   private stepCycle(c: Cycle, it: CycleIntent, dt: number) {
     c.px = c.x; c.pz = c.z; c.turnT += dt;
     if (it.turn !== 0 && c.queue.length < 2) c.queue.push(it.turn);
-    if (c.queue.length && c.sinceTurn >= MIN_TURN) {
+    if (c.queue.length && c.sinceTurn >= MIN_TURN && c.airT <= 0) {
       const t = c.queue.shift()!, prev = c.dir; c.trail.push(c.x, c.z); c.dir = (c.dir + t + 4) % 4; c.sinceTurn = 0; c.turnT = 0; this.noteTurn(c, prev);
       this.events.push({ type: 'turn', id: c.id, dir: c.dir, turn: t, x: c.x, z: c.z });
     }
@@ -112,11 +127,16 @@ export class CombatSim {
     c.speed = approach(c.speed, target, 34 * dt);
     const [dx, dz] = DIRS[c.dir]; const dist = c.speed * dt;
     const nx = c.x + dx * dist, nz = c.z + dz * dist;
+    // ramps: up one in its launch direction and the cycle leaves the grid; the trail breaks here and resumes on landing
+    if (c.airT <= 0) for (const rp of this.ramps) if (rp.dir === c.dir && rampContains(rp, nx, nz)) {
+      c.airT = AIR_TIME; c.queue.length = 0; c.trail.push(c.x, c.z, NaN, NaN); this.events.push({ type: 'jump', id: c.id, x: c.x, z: c.z, player: c.isPlayer }); break;
+    }
+    if (c.airT > 0) { c.airT -= dt; if (c.airT <= 0) { c.airT = 0; c.trail.push(nx, nz); c.sinceTurn = 0; this.events.push({ type: 'land', id: c.id, x: nx, z: nz, player: c.isPlayer }); } }
     // continuous (swept) collision of the travelled segment
     const cause = this.sweep(c, c.x, c.z, nx, nz);
     c.x = nx; c.z = nz; c.sinceTurn += dist;
     if (cause) { this.crash(c, cause.kind, cause.by); return; }
-    const ci = this.cell(c.x, c.z); if (ci >= 0 && this.grid[ci] === 0) this.grid[ci] = c.id;
+    const ci = this.cell(c.x, c.z); if (ci >= 0 && this.grid[ci] === 0 && c.airT <= 0) this.grid[ci] = c.id;
     // wall-riding: hugging a wall within ~2 m charges boost and scores
     const l = (c.dir + 3) % 4, r = (c.dir + 1) % 4; let grind = false;
     for (const sd of [l, r]) { const [sx, sz] = DIRS[sd]; if (this.solid(c.x + sx * 1.2, c.z + sz * 1.2) || this.solid(c.x + sx * 2.2, c.z + sz * 2.2)) grind = true; }
@@ -139,7 +159,7 @@ export class CombatSim {
     if (Math.abs(x1) > this.half - 0.35 || Math.abs(z1) > this.half - 0.35) return { kind: 'wall', by: 0 };
     const minx = Math.min(x0, x1), maxx = Math.max(x0, x1), minz = Math.min(z0, z1), maxz = Math.max(z0, z1);
     for (const o of this.obstacles) if (o.state === 'solid' && maxx > o.x - o.hx - BODY_HW && minx < o.x + o.hx + BODY_HW && maxz > o.z - o.hz - BODY_HW && minz < o.z + o.hz + BODY_HW) return { kind: o.kind, by: 0 };
-    if (c.phaseT > 0) return null;
+    if (c.phaseT > 0 || c.airT > 0) return null;
     const e = TRAIL_HW + BODY_HW;
     for (const o of this.cycles) {
       if (o.trailGone) continue;
@@ -147,7 +167,8 @@ export class CombatSim {
       const last = own ? segs - 2 : segs;
       for (let i = 0; i < last; i++) {
         const ax = t[i * 2], az = t[i * 2 + 1]; let bx: number, bz: number;
-        if (i + 1 < segs) { bx = t[i * 2 + 2]; bz = t[i * 2 + 3]; } else { bx = o.alive ? o.px : o.x; bz = o.alive ? o.pz : o.z; }
+        if (i + 1 < segs) { bx = t[i * 2 + 2]; bz = t[i * 2 + 3]; } else { if (o.airT > 0) continue; bx = o.alive ? o.px : o.x; bz = o.alive ? o.pz : o.z; }
+        if (isGap(ax) || isGap(bx)) continue;
         if (maxx > Math.min(ax, bx) - e && minx < Math.max(ax, bx) + e && maxz > Math.min(az, bz) - e && minz < Math.max(az, bz) + e) return { kind: 'trail', by: o.id };
       }
     }
