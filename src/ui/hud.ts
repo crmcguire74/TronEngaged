@@ -90,6 +90,8 @@ export class Hud implements HudApi {
       path(); c.strokeStyle = 'rgba(79,227,255,0.22)'; c.lineWidth = 9; c.stroke(); path(); c.strokeStyle = 'rgba(190,235,255,0.9)'; c.lineWidth = 2; c.stroke();
       c.fillStyle = '#fff'; c.fillRect(p[0] * k - 1.5, p[1] * k - 8, 3, 16);
       for (const h of r.hazards) { c.fillStyle = '#ff4d5e'; c.fillRect(h.x * k - 2.5, h.z * k - 2.5, 5, 5); }
+      // discs in flight: a hostile one aimed at the player is a large flashing red diamond, others small
+      if (r.discs) for (const d of r.discs) { const s = d.atMe ? 7 : 4; c.save(); c.translate(d.x * k, d.z * k); c.rotate(Math.PI / 4); c.fillStyle = d.mine ? '#9ff3ff' : d.atMe && Math.floor(performance.now() / 120) % 2 ? '#ffffff' : '#ff2a14'; c.fillRect(-s / 2, -s / 2, s, s); c.restore(); }
       if (r.walls) { c.lineWidth = 3; c.lineCap = 'round'; for (const w of r.walls) { c.strokeStyle = w.color; c.beginPath(); c.moveTo(w.x0 * k, w.z0 * k); c.lineTo(w.x1 * k, w.z1 * k); c.stroke(); } }
       for (const q of r.racers) if (!q.out && !q.player) arrow(q.x * k, q.z * k, q.h ?? 0, q.color, 5, false);
       for (const q of r.racers) if (!q.out && q.player) arrow(q.x * k, q.z * k, q.h ?? 0, q.color, 6, true);

@@ -204,7 +204,8 @@ export class RaceSession extends BaseSession {
         vfx.sparks(e.x, e.y + 0.6, e.z, 0xffffff, 34 + Math.round(f * 50), 11 + f * 10, 0.5 + f * 0.3);
         vfx.ring(e.x, e.y + 0.3, e.z, 0xffffff, 0.35, 4 + f * 3, 0.35);
         audio.sfx('crash', e.player ? undefined : e);
-        if (e.by === this.sim.player.id) { if (f > 0.75) this.slowmo(0.35, 0.7); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
+        // a shove the player lands is felt: a hit-stop, metal on metal, sparks thrown off the side and a kick through the bars
+        if (e.by === this.sim.player.id) { this.slowmo(f > 0.6 ? 0.4 : 0.22, f > 0.6 ? 0.3 : 0.45); vfx.sparks(e.x, e.y + 0.7, e.z, 0xffd9a0, 60, 14, 0.5); vfx.ring(e.x, e.y + 0.6, e.z, 0xffb62e, 0.3, 6, 0.3); audio.sfx('railSlam', e); hud.toast(f > 0.6 ? 'BIG HIT' : 'SHUNT', 'good'); if (f > 0.6) audio.say('Rider shunted.'); xr.pulse('both', 0.8, 120); engine.addShake(0.35 + f * 0.4); input.rumble(0.8, 0.8, 160); }
         else if (e.player) { hud.toast('RAMMED', 'danger'); hud.flash('hurt'); engine.hurt(0.9, e); audio.sfx('grunt'); engine.addShake(0.6 + f * 0.6); xr.pulse('both', 1, 200); input.rumble(1, 1, 260); }
         break;
       }
@@ -328,13 +329,13 @@ export class RaceSession extends BaseSession {
     if (this.phase === 'play') audio.intensity = damp(audio.intensity, clamp(0.6 + sp01 * 0.25 + (P.lap >= sim.totalLaps() - 1 ? 0.15 : 0), 0, 1), 2, dt);
     const laps = sim.totalLaps(), solo = this.format === 'timetrial' || this.format === 'gauntlet', active = sim.racers.filter((r) => !r.out).length;
     const tgt = sim.racers[0]; const data: Record<string, any> = { tier: this.tier, speed: P.speed, boost: P.boost, boosting: P.boosting, drift: P.drifting, draft: P.draft, pulse: sim.lightwalls ? P.wallCd : P.pulseCd, abilityName: sim.lightwalls ? 'LIGHT WALL' : 'PULSE', abilityKey: ctl(dev, 'E', 'B', xr.labels.ability), wallOn: sim.lightwalls ? P.wallT : 0, wallLay: WALL_LAY, wallMax: sim.lightwalls ? WALL_COOLDOWN : 0, takedowns: this.kills, place: P.place, field: active, active, solo, time: sim.time, best: sim.stats.bestLap, par: this.format === 'timetrial' ? sim.parTime : 0, score: 0, format: FORMAT_LABEL[this.format], storm: this.storm,
-      lapLabel: T.closed ? `LAP ${clamp(P.lap + 1, 1, laps)}/${laps}` : `${Math.round((P.idx / T.n) * 100)}%`, radar: this.radarFn ??= () => { const sim = this.sim, T = sim.track; return { kind: 'track', pts: this.radarPts, closed: T.closed, extent: this.ext.r, cx: this.ext.cx, cz: this.ext.cz, hazards: sim.hazards, walls: sim.walls.length ? sim.walls.filter((_, i) => i % 2 === 0).map((w) => ({ x0: w.x0, z0: w.z0, x1: w.x1, z1: w.z1, color: css(this.colors[w.owner - 1]) })) : null, racers: sim.racers.map((r, i) => ({ x: r.x, z: r.z, h: r.h, color: css(this.colors[i]), player: r.isPlayer, out: r.out || r.downT > 0 })) }; } };
+      lapLabel: T.closed ? `LAP ${clamp(P.lap + 1, 1, laps)}/${laps}` : `${Math.round((P.idx / T.n) * 100)}%`, radar: this.radarFn ??= () => { const sim = this.sim, T = sim.track; return { kind: 'track', pts: this.radarPts, closed: T.closed, extent: this.ext.r, cx: this.ext.cx, cz: this.ext.cz, hazards: sim.hazards, discs: sim.discsOn ? sim.flying.map((d) => ({ x: d.x, z: d.z, mine: d.owner === sim.player.id, atMe: d.target === sim.player.id })) : null, walls: sim.walls.length ? sim.walls.filter((_, i) => i % 2 === 0).map((w) => ({ x0: w.x0, z0: w.z0, x1: w.x1, z1: w.z1, color: css(this.colors[w.owner - 1]) })) : null, racers: sim.racers.map((r, i) => ({ x: r.x, z: r.z, h: r.h, color: css(this.colors[i]), player: r.isPlayer, out: r.out || r.downT > 0 })) }; } };
     if (this.format === 'gauntlet') data.integrity = P.integrity; if (this.format === 'elimination' && this.phase === 'play') data.elim = sim.elimT; if (this.format === 'pursuit' && !tgt.out) data.gap = Math.max(0, Math.round((tgt.progress - P.progress) * T.step));
     hud.update(data); this.viewDiscs(dt, t); this.applyKillCam(dt);
   }
   private radarFn: (() => any) | null = null; private ambient!: Ambient;
   // ---------------------------------------------------------------- race discs (view)
-  private discPool: { g: THREE.Group; rim: THREE.MeshBasicMaterial; id: number }[] = []; private handDisc: THREE.Group | null = null; private discReadyShown = true; private discTip = 0;
+  private discPool: { g: THREE.Group; rim: THREE.MeshBasicMaterial; id: number }[] = []; private handDisc: THREE.Group | null = null; private discReadyShown = true; private discTip = 0; private lockT = 0;
   /** A thrown disc: a dark core in a lit rim, in the thrower's colour (rivals' always red, so a threat reads at once). */
   private makeDisc(color: number) {
     const g = new THREE.Group(), rim = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.6) });
@@ -354,7 +355,10 @@ export class RaceSession extends BaseSession {
     // in a headset the disc is in the hand from the moment it is taken off the back until it is thrown
     const xr = this.ctx.xr; if (this.xr && xr.discHeld) { if (!this.handDisc) { this.handDisc = this.makeDisc(this.colors[sim.racers.indexOf(sim.player)]).g; this.handDisc.scale.setScalar(0.85); } const anchor = xr.handAnchor(xr.dominant); if (this.handDisc.parent !== anchor) anchor.add(this.handDisc); this.handDisc.visible = true; this.handDisc.rotation.y += dt * 4; }
     else if (this.handDisc) this.handDisc.visible = false;
-    const P = sim.player; if (P.discCd <= 0 && !this.discReadyShown && this.phase === 'play') { this.discReadyShown = true; this.ctx.hud.toast('DISC READY', 'good'); } if (P.discCd > 0) this.discReadyShown = false;
+    // lock-on alarm: while a rival's disc is coming for the player it beeps, faster and higher the closer it gets
+    const P = sim.player; let nearest = Infinity; for (const d of sim.flying) if (d.target === P.id) nearest = Math.min(nearest, (P.progress - d.p) * sim.track.step);
+    if (nearest < Infinity && nearest > -2) { this.lockT -= dt; if (this.lockT <= 0) { this.lockT = clamp(nearest / 120, 0.08, 0.4); this.ctx.audio.sfx('prox'); } this.ctx.hud.coach(`⚠ DISC LOCKED ON — ${Math.max(0, Math.round(nearest))} m BEHIND — STEER OUT OF ITS LANE`); } else this.lockT = 0;
+    if (P.discCd <= 0 && !this.discReadyShown && this.phase === 'play') { this.discReadyShown = true; this.ctx.hud.toast('DISC READY', 'good'); } if (P.discCd > 0) this.discReadyShown = false;
   }
   dispose() { this.ctx.xr.discGesture = false; this.handDisc?.removeFromParent(); const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
 }

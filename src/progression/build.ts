@@ -1,4 +1,4 @@
-import { Rng, hashSeed } from '../engine/math';
+import { Rng, clamp, hashSeed } from '../engine/math';
 import { buildArena, validateArena, type ArenaDef } from '../games/discs/arena';
 import type { DiscSimConfig } from '../games/discs/sim';
 import type { CombatConfig, RivalDef } from '../games/cycles/combat';
@@ -65,7 +65,10 @@ export function buildRaceConfig(t: TierDefinition, diff: DifficultyId, playerMod
     hills: num(t, 'hills'), hillCount: num(t, 'hillCount', 3) + (stage % 2), bank: num(t, 'bank'),
     tunnels: num(t, 'tunnels'), bridges: num(t, 'bridges'), canyons: num(t, 'canyons') });
   const e = t.enemies[0]; const rivals = []; const models = raceRivalModels(t, playerModel);
-  for (let i = 0; i < models.length; i++) rivals.push({ skill: (e.difficulty) * (1 - 0.06 * ((i * 7) % 4)), model: models[i] });
+  // the early tiers (to 14) had rivals that a player could lap after one light wall: their skill gets a floor that
+  // fades out by tier 14, so the first races are still beatable but are races
+  const floor = t.endless ? 0 : clamp((15 - t.id) / 13, 0, 1) * 0.22;
+  for (let i = 0; i < models.length; i++) rivals.push({ skill: Math.min(1, (e.difficulty + floor) * (1 - 0.06 * ((i * 7) % 4))), model: models[i] });
   // from the fourth tier on, riders can be rammed off the road
   return { track, seed, laps: num(t, 'laps', 2), format, rivals, modifiers: t.id >= 4 ? [...t.modifiers, 'ramming'] : t.modifiers, aiSkill: D.aiSkill, hazardMul: D.hazards, resources: D.resources, passPlace: num(t, 'passPlace', 3), playerModel, hazards: num(t, 'hazards'), pads: num(t, 'pads', 3) };
 }

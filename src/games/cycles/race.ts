@@ -45,6 +45,8 @@ export interface Racer {
 /** One piece of light wall laid behind a racer. It destroys rivals that ride into it and stuns the player. */
 export interface WallSeg { owner: number; x0: number; z0: number; x1: number; z1: number; y: number; until: number }
 export const WALL_LAY = 1.8, WALL_LIFE = 4.5, WALL_COOLDOWN = 8;
+/** No light walls for the opening seconds: walling a bunched grid at the start took half the field out at once. */
+export const OPENING_WALL_LOCK = 10;
 /** Owner id of a barrier dropped by the interceptor: no rider has it, so it is live for the whole field. */
 export const INTERCEPTOR_ID = 0;
 /**
@@ -97,7 +99,7 @@ export class RaceSim {
       const veh = r ? { top: base.top * (0.88 + 0.12 * sk) * (cfg.format === 'pursuit' ? 0.95 : 1), accel: base.accel * (0.9 + 0.1 * sk), handling: base.handling } : base;
       const h = Math.atan2(t.tx[idx], t.tz[idx]);
       const lapOff = t.closed && idx > t.n / 2 && !(cfg.format === 'pursuit' && !isPlayer) ? -1 : 0;
-      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: 3, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
+      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: OPENING_WALL_LOCK, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
     }
     this.player = this.racers[n - 1];
     const C = t.closed ? 4 : 5; for (let i = 1; i <= C; i++) this.checkpoints.push(Math.min(t.n - 2, Math.round((i * t.n) / (t.closed ? C : C + 0.02)) % (t.closed ? t.n : 1e9)));
@@ -151,13 +153,13 @@ export class RaceSim {
     // In an elimination event the timed cut is the elimination mechanic; a wall or a rail only costs a rider the
     // places it takes to re-form. Making takedowns final as well used to empty the field inside the first lap and
     // then cut whoever was left at the back, whatever they had done.
-    r.downT = r.isPlayer ? 3 : 3.4; r.vx = r.vz = 0; r.speed = 0; r.wallT = 0; r.shoveT = 0; r.stun = 0; r.boosting = false; r.drifting = false; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1;
+    r.downT = r.isPlayer ? 3 : 2.4; r.vx = r.vz = 0; r.speed = 0; r.wallT = 0; r.shoveT = 0; r.stun = 0; r.boosting = false; r.drifting = false; if (by === this.player.id) this.stats.takedowns = (this.stats.takedowns ?? 0) + 1;
     this.events.push({ type: 'takedown', id: r.id, x: r.x, y: r.y, z: r.z, by, cause });
   }
   private reform(r: Racer, dt: number) {
     r.px = r.x; r.py = r.y; r.pz = r.z; r.ph = r.h; r.downT -= dt; if (r.downT > 0) return;
     const t = this.track; trackPoint(t, r.idx, 0, pt); r.x = r.px = pt.x; r.y = r.py = pt.y; r.z = r.pz = pt.z; r.d = 0; r.h = r.ph = Math.atan2(t.tx[r.idx], t.tz[r.idx]);
-    const v = r.veh.top * 0.6; r.vx = Math.sin(r.h) * v; r.vz = Math.cos(r.h) * v; r.speed = v; r.graceT = 3; r.downT = 0; r.wallCd = Math.max(r.wallCd, 4);
+    const v = r.veh.top * (r.isPlayer ? 0.6 : 0.85); r.vx = Math.sin(r.h) * v; r.vz = Math.cos(r.h) * v; r.speed = v; r.graceT = 3; r.downT = 0; r.wallCd = Math.max(r.wallCd, 4);
     this.events.push({ type: 'reform', id: r.id, x: r.x, y: r.y, z: r.z });
   }
 
@@ -189,7 +191,9 @@ export class RaceSim {
     if (side < 0.55) return;
     // whoever arrived faster does the shoving; super speed counts for an extra margin of its own
     const da = a.speed - b.speed + (a.boosting ? 8 : 0) - (b.boosting ? 8 : 0);
-    if (Math.abs(da) < 7) return;
+    // the player shoves from a 4 m/s edge; a rival needs 6 to shove the player, so rams reward the player's driving
+    // without turning the pack into bullies
+    const shover = da > 0 ? a : b; if (Math.abs(da) < (shover.isPlayer ? 4 : 6)) return;
     if (da > 0) this.shunt(a, b, nx, nz, da); else this.shunt(b, a, -nx, -nz, -da);
   }
 
@@ -197,8 +201,8 @@ export class RaceSim {
   private shunt(by: Racer, r: Racer, nx: number, nz: number, force: number) {
     if (r.shoveT > 0 || r.finished || r.graceT > 0) return; r.graceT = 4; const t = this.track, side = Math.sign(nx * -t.tz[r.idx] + nz * t.tx[r.idx]) || 1;
     // push straight across the track, toward whichever rail the contact points at, harder the bigger the mismatch
-    const p = Math.min(22, 9 + force * 0.7);
-    r.shx = -t.tz[r.idx] * side * p; r.shz = t.tx[r.idx] * side * p; r.shoveT = 1.1 + Math.min(0.7, force * 0.05); r.stun = Math.max(r.stun, 0.4 + Math.min(0.35, force * 0.02)); r.drifting = false;
+    const p = Math.min(30, 13 + force * 0.95);
+    r.shx = -t.tz[r.idx] * side * p; r.shz = t.tx[r.idx] * side * p; r.shoveT = 1.2 + Math.min(0.8, force * 0.06); r.stun = Math.max(r.stun, 0.5 + Math.min(0.4, force * 0.025)); r.drifting = false;
     by.speed *= 0.94; by.vx *= 0.94; by.vz *= 0.94; // the hit costs the rider that made it a little pace too
     this.events.push({ type: 'shunt', id: r.id, by: by.id, player: r.isPlayer, x: r.x, y: r.y, z: r.z, force });
   }
@@ -432,10 +436,12 @@ export class RaceSim {
     // catch-up pacing: a rival that has dropped behind the player finds more speed the further back it is, and one far
     // ahead eases a little. The race stays a race for all its laps instead of being settled in the first minute.
     const P = this.player, gap = (P.progress - r.progress) * t.step, band = clamp(0.3 + this.cfg.aiSkill * 0.4, 0.16, 0.42) * (this.cfg.format === 'elimination' ? 0 : 1); // elimination already punishes being passed
-    const wantPace = r.isPlayer || P.finished || this.cfg.format === 'pursuit' ? 1 : gap > 0 ? 1 + clamp((gap - 6) / 30, 0, 1) * band : 1 - clamp((-gap - 45) / 220, 0, 1) * 0.07;
+    // far behind (past 80 m, so never in the player's sight) a rival finds a further margin, up to 0.25 more
+    const far = clamp((gap - 80) / 200, 0, 1) * (band > 0 ? 0.25 : 0);
+    const wantPace = r.isPlayer || P.finished || this.cfg.format === 'pursuit' ? 1 : gap > 0 ? 1 + clamp((gap - 6) / 30, 0, 1) * band + far : 1 - clamp((-gap - 45) / 220, 0, 1) * 0.07;
     r.pace = approach(r.pace, wantPace, 0.35 * dt);
     // extra pace never takes a rider past what the tyres can hold: corner speed is capped at the full-skill limit
-    const target = Math.min(r.veh.top * 1.3 * (0.84 + 0.16 * sk) * r.pace, Math.min(vmax * (0.84 + 0.16 * sk) * r.pace, Math.sqrt((27 * r.veh.handling) / maxC) * 0.98));
+    const target = Math.min(r.veh.top * 1.3 * (0.84 + 0.16 * sk) * r.pace, Math.min(vmax * (0.84 + 0.16 * sk) * r.pace, Math.sqrt((27 * r.veh.handling) / maxC) * 0.98 * (1 + far * 0.5)));
     const c = t.curv[look]; let d = -Math.sign(c) * Math.min(1, Math.abs(c) * 45) * (hw - 2) * 0.7 * sk;
     d += Math.sin(r.id * 2.4 + r.progress * 0.004) * 1.4;
     for (const h of this.hazards) {

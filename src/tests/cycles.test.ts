@@ -133,3 +133,16 @@ describe('combat jump ramps', () => {
     expect(jumped).toBe(false); expect(new CombatSim(buildCombatConfig(COMBAT_TIERS[0], 'standard')).ramps).toHaveLength(0);
   });
 });
+
+describe('race balance', () => {
+  it('locks every light wall for the opening seconds, so the start cannot take the grid out', () => {
+    const t = RACE_TIERS.find((x) => x.modifiers.includes('lightwalls'))!; const sim = new RaceSim(buildRaceConfig(t, 'standard', 'azure'));
+    for (const r of sim.racers) expect(r.wallCd).toBeGreaterThanOrEqual(10);
+  });
+  it('gives early-tier rivals a skill floor that fades out by tier 14', () => {
+    const early = RACE_TIERS.find((x) => x.id === 2)!, late = RACE_TIERS.find((x) => x.id >= 16)!;
+    const e = buildRaceConfig(early, 'standard', 'azure'), l = buildRaceConfig(late, 'standard', 'azure');
+    expect(e.rivals[0].skill).toBeGreaterThan(early.enemies[0].difficulty + 0.15);
+    expect(l.rivals[0].skill).toBeCloseTo(late.enemies[0].difficulty, 5);
+  });
+});
