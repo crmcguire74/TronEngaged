@@ -48,7 +48,7 @@ export class CombatSession extends BaseSession {
     // riders
     sim.cycles.forEach((c) => {
       const col = c.isPlayer ? playerTrail(ctx) : CYCLE_COLORS[c.model] ?? 0xff5a36; this.colors.push(col);
-      const v = new CycleView(ctx, c.isPlayer ? ctx.settings.cycle : c.model, col, c.isPlayer ? 'char:' + ctx.settings.skin : undefined); v.reveal.value = -1; W.add(v.root); this.cv.push(v);
+      const v = new CycleView(ctx, c.isPlayer ? ctx.settings.cycle : c.model, col, c.isPlayer ? 'char:' + ctx.settings.skin : undefined); v.reveal.value = -1; W.add(v.root); this.cv.push(v); if (c.isPlayer) v.prepareCockpit();
       v.parked = true; const t = new WallTrail(col); W.add(t.mesh); this.trails.push(t);
 
     });
@@ -252,7 +252,9 @@ export class CombatSession extends BaseSession {
     if (this.phase === 'play' || this.phase === 'countdown') audio.engineSet(this.phase === 'play' ? sp01 * 1.5 : 0.1, P.boosting, sp01);
     if (this.phase === 'play') audio.intensity = damp(audio.intensity, clamp(0.55 + (wall < 14 ? 0.25 : 0) + sim.aliveRivals() * 0.05 + (P.boosting ? 0.1 : 0), 0, 1), 2, dt);
     hud.update({ tier: this.tier, speed: P.speed, boost: P.boost, boosting: P.boosting, grind: P.grind, power: P.power, rivals: sim.aliveRivals(), score: Math.round(sim.stats.score), wall, traps: sim.stats.trapKills, shrinking: pulse,
-      radar: { kind: 'grid', half: H, half0: sim.half0, obstacles: sim.obstacles, pickups: sim.pickups, cycles: sim.cycles.map((c, i) => ({ x: c.x, z: c.z, h: yawOf(c.dir), color: css(this.colors[i]), player: c.isPlayer, alive: c.alive, gone: c.trailGone, trail: c.trail })) } });
+      // built only on the frames the map is redrawn (every third), not every frame: less garbage, fewer GC pauses
+      radar: this.radarFn ??= () => ({ kind: 'grid', half: this.sim.half, half0: this.sim.half0, obstacles: this.sim.obstacles, pickups: this.sim.pickups, cycles: this.sim.cycles.map((c, i) => ({ x: c.x, z: c.z, h: yawOf(c.dir), color: css(this.colors[i]), player: c.isPlayer, alive: c.alive, gone: c.trailGone, trail: c.trail })) }) });
   }
+  private radarFn: (() => any) | null = null;
   dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
 }

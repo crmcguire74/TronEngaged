@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BaseSession, ctl, type Ctx, type SessionResult } from '../../app/context';
 import type { Actions } from '../../input/input';
 import type { Instance } from '../../engine/assets';
-import { CITY_PANO, PANORAMA, tuneEmissive } from '../../engine/assets';
+import { CITY_PANO, PANORAMA, lodChar, tuneEmissive } from '../../engine/assets';
 import { Crowd, gridFloor, hardlight, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { Ribbon } from '../../engine/vfx';
 import { Drones } from '../../engine/patrol';
@@ -17,16 +17,20 @@ const ION = 0x4fe3ff;
 const GLYPH: Record<string, string> = { sentinel: '▲', guardian: '■', striker: '◆', ricochet: '◣', hunter: '◎', disruptor: '✕', commander: '★' };
 
 /** Injects a world-height reveal into a model's materials: used for materialise / de-materialise sequences. */
-export function revealMaterials(root: THREE.Object3D, uni: { value: number }, glow = new THREE.Color(0.4, 0.9, 1)) {
+/**
+ * Materialise-from-the-floor effect, plus an optional fresnel rim in the glow colour (`rim` > 0): the rim lets a dark
+ * rider read against a dark machine at a distance, at no extra draw call or skinning pass.
+ */
+export function revealMaterials(root: THREE.Object3D, uni: { value: number }, glow = new THREE.Color(0.4, 0.9, 1), rim = 0) {
   root.traverse((o: any) => {
     if (!o.isMesh) return;
     for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
       m.onBeforeCompile = (sh: any) => {
-        sh.uniforms.uReveal = uni; sh.uniforms.uRevealGlow = { value: glow };
+        sh.uniforms.uReveal = uni; sh.uniforms.uRevealGlow = { value: glow }; sh.uniforms.uRim = { value: rim };
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vRY;').replace('#include <project_vertex>', '#include <project_vertex>\nvRY = (modelMatrix * vec4(transformed, 1.0)).y;');
-        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRY; uniform float uReveal; uniform vec3 uRevealGlow;').replace('#include <dithering_fragment>', 'if (vRY > uReveal) discard; gl_FragColor.rgb += uRevealGlow * smoothstep(0.22, 0.0, uReveal - vRY) * 3.0;\n#include <dithering_fragment>');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRY; uniform float uReveal, uRim; uniform vec3 uRevealGlow;').replace('#include <dithering_fragment>', 'if (vRY > uReveal) discard; gl_FragColor.rgb += uRevealGlow * smoothstep(0.22, 0.0, uReveal - vRY) * 3.0;\n' + (rim > 0 ? '#ifdef STANDARD\n gl_FragColor.rgb += uRevealGlow * pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 2.5) * uRim;\n#endif\n' : '') + '#include <dithering_fragment>');
       };
-      m.customProgramCacheKey = () => 'reveal'; m.needsUpdate = true;
+      m.customProgramCacheKey = () => (rim > 0 ? 'reveal-rim' : 'reveal'); m.needsUpdate = true;
     }
   });
 }
@@ -61,7 +65,7 @@ export class DiscSession extends BaseSession {
   private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3();
   private hopFade = false; private offset = new THREE.Vector3(); private recentred = false; private vrDisc: THREE.Object3D | null = null; private introDone = false; private bossName = ''; private totalEnemies: number; private interfere = false; private lastHp: number; private early: boolean; private threw = false; private shielded = false; private drawT = 9; private called = false; private eye = new THREE.Vector3(); private arrows: THREE.Mesh[] = []; private slowT = 0; private slowDur = 1; private slowMin = 1; private tickAt = 0;
 
-  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'disc:identity', 'sword', 'pedestal', 'coliseum', 'drone']; }
+  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'lodchar:ivory', 'lodchar:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'disc:identity', 'sword', 'pedestal', 'coliseum', 'drone']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, seedSalt = 0) {
     super(ctx, tier, diff);
@@ -146,7 +150,8 @@ export class DiscSession extends BaseSession {
   }
 
   private addFighter(f: Fighter) {
-    const key = f.isPlayer ? 'char:' + this.ctx.settings.skin : 'char:' + f.arch.model;
+    // ordinary rivals stand 10-25 m off and use the light rider; bosses and the player keep full detail
+    const key = f.isPlayer ? 'char:' + this.ctx.settings.skin : f.arch.boss ? 'char:' + f.arch.model : lodChar(this.ctx.assets, 'char:' + f.arch.model);
     const inst = this.ctx.assets.instance(key, { cloneMaterials: true }); const root = new THREE.Group(); root.add(inst.root); inst.root.scale.setScalar(f.arch.scale);
     const reveal = { value: f.isPlayer ? 50 : -5 }; if (!inst.missing) revealMaterials(inst.root, reveal, new THREE.Color(f.isPlayer ? ION : f.arch.tint).multiplyScalar(0.8));
     // rivals built on the pale runner carry their archetype colour in their circuit lines, so each type reads at a glance

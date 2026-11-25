@@ -63,7 +63,7 @@ export class Hud implements HudApi {
         this.set('laps', `<b>${d.lapLabel}</b><span>${fmtTime(d.time)}</span>${d.best ? `<span class="dim">BEST ${fmtTime(d.best)}</span>` : ''}`, 'html'); this.set('combo', '');
         this.set('alert', d.elim !== undefined ? `<b>${this.threatShapes ? '✕ ' : ''}CUT IN ${Math.ceil(d.elim)}s${d.place === d.active ? ' — YOU ARE LAST' : ''}</b>` : d.storm ? '<b class="warn">≋ STORM CELL</b>' : d.gap ? `<b class="ok">TARGET ${d.gap} m</b>` : '', 'html'); this.set('alert', d.elim !== undefined && d.place === d.active ? 'crit' : 'warn', 'data-s');
       }
-      this.radarT -= 1; if (this.radarT <= 0) { this.radarT = 3; this.drawRadar(d.radar); }
+      this.radarT -= 1; if (this.radarT <= 0) { this.radarT = 3; this.drawRadar(typeof d.radar === 'function' ? d.radar() : d.radar); }
     }
   }
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Ctx } from '../../app/context';
 import type { Instance } from '../../engine/assets';
-import { tuneEmissive } from '../../engine/assets';
+import { lodChar, tuneEmissive } from '../../engine/assets';
 import { TONE } from '../../engine/env';
 import { angleLerp, clamp, damp } from '../../engine/math';
 import { revealMaterials } from '../discs/session';
@@ -31,7 +31,11 @@ const FIT: Record<string, { s: number; y: number; turn: number; x?: number; z?: 
 };
 /** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
 const RIDER: Record<string, string> = { azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson', agile: 'char:ivory', flynn: 'char:cobalt' };
-export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m) => ['cycle:' + m, RIDER[m]]).concat(['char:' + skin, 'cockpit', 'cockpit2', 'cockpit3', 'cockpit4', 'console', 'hands']).filter(Boolean))];
+// rivals bring their light copies (machine and rider); the player's own machine never needs one
+export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m, i) => ['cycle:' + m, RIDER[m], ...(i > 0 ? ['lod:' + m, RIDER[m] && 'lod' + RIDER[m]] : [])]).concat(['char:' + skin, COCKPIT, 'hands']).filter((k): k is string => !!k && (!k.startsWith('lod:') || LOD_MODELS.has(k.slice(4)))))];
+const LOD_MODELS = new Set(['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet']);
+/** The cockpit model the first-person view is built from (scripts/blender/build_cockpit_v5.py). */
+const COCKPIT = 'cockpit5';
 /** Rider eye point relative to the cycle origin (metres): x right-handed, y up, z forward. */
 export const EYE = { y: 1.27, z: -0.2 };
 /**
@@ -42,6 +46,7 @@ const GRIPS: Record<string, { a: [number, number, number]; b: [number, number, n
   cockpit2: { a: [0.3, 0.99, 0.42], b: [0.39, 0.985, 0.36], elbow: [0.27, 0.9, -0.08] },
   cockpit3: { a: [0.3, 0.99, 0.42], b: [0.39, 0.985, 0.36], elbow: [0.27, 0.9, -0.08] },
   cockpit4: { a: [0.395, 0.988, 0.352], b: [0.452, 0.978, 0.268], elbow: [0.33, 0.9, -0.1] },
+  cockpit5: { a: [0.38, 0.97, 0.36], b: [0.44, 0.96, 0.27], elbow: [0.3, 0.86, -0.14] },
 };
 const WHITE = new THREE.Color(1, 1, 1);
 /**
@@ -52,14 +57,18 @@ const WHITE = new THREE.Color(1, 1, 1);
 const TRIM_EMISSIVE = 0.9;
 // clearcoatRoughness is deliberately not mirror-sharp: at 0.03 a single point light makes a pinpoint highlight that
 // bloom then blows into a white disc sitting over the instruments. Spreading it keeps the sheen and loses the blob.
-const BLACK_GLASS = () => new THREE.MeshPhysicalMaterial({ name: 'Body', color: 0x010102, metalness: 0, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.11, envMapIntensity: 0.9, specularIntensity: 0.45 });
+// Plain standard material, not physical clearcoat: the cockpit fills most of the view in a headset, and a clearcoat
+// layer is a second full lighting pass on every one of those pixels, per eye. Low roughness gives the same gloss.
+const BLACK_GLASS = () => new THREE.MeshStandardMaterial({ name: 'Body', color: 0x010102, metalness: 0.2, roughness: 0.16, envMapIntensity: 1.0 });
 const ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
 
 /** A cycle with its rider: supplied vehicle model, materialise effect, wheel/drive animation and cosmetic lean. */
 export class CycleView {
   readonly root = new THREE.Group(); readonly body = new THREE.Group(); readonly reveal = { value: 50 }; private inst: Instance; private rider: Instance | null = null; lean = 0; private yaw = 0; glow: THREE.Mesh; private cockpit: THREE.Object3D | null = null; private fp = false; private wheels: { o: THREE.Object3D; r: number }[] = []; private lastX = 0; private lastZ = 0; private placed = false; private trims: THREE.MeshStandardMaterial[] = []; private fireT = 0; private power = { value: 1 }; private riderKey = ''; private walker: Instance | null = null; private walkReveal = { value: -1 }; private walkT = 0; private wFrom = new THREE.Vector3(); private wTo = new THREE.Vector3();
   private yoke: THREE.Object3D | null = null; private canopy: THREE.Object3D | null = null; private canopyK = 0; private canopyTarget = 0; private sealAt = -9; private canopyMoving = false; private lamps: THREE.MeshBasicMaterial[] = []; private lampCol = new THREE.Color();
-  private gauges: HoloGauge[] = []; private dialV = [0, 0];
+  private gauges: HoloGauge[] = []; private dialV = [0, 0]; private rings: THREE.Object3D[] = [];
+  /** Distance LOD: a geometry-only low-detail copy sharing this machine's materials, and the rider dropped when far. */
+  private lod: Instance | null = null; private lodOn = false; private riderFar = false; private riderWanted = true;
   private gloves: { g: GloveHand; pivot: THREE.Group; wrist: THREE.Object3D; arm: THREE.Mesh; axis: THREE.Vector3; elbow: THREE.Vector3; side: number }[] = []; private steerV = 0; private yokeY = 0; private throttleV = 0; private brakeV = 0; private tv = new THREE.Vector3(); private tv2 = new THREE.Vector3();
   /** False while the rider is still on foot during the start sequence. */ mounted = true;
   /** Before the start: engine idling, canopy open where the model has one. */ parked = false;
@@ -67,7 +76,7 @@ export class CycleView {
     this.inst = ctx.assets.instance('cycle:' + model, { cloneMaterials: true }); tuneEmissive(this.inst.root, 1.5);
     // generated cycles: light lines take the rider's colour (unlit, so they read without bloom) and wheels are spun in code
     this.inst.root.traverse((o: any) => {
-      if (o.isMesh && o.material?.name === 'Trim') o.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.5) });
+      if (o.isMesh && o.material?.name === 'Trim') { o.userData.matName = 'Trim'; o.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.5) }); }
       if (o.name.startsWith('Wheel') && o.userData.radius) this.wheels.push({ o, r: o.userData.radius });
     });
     if (!this.inst.missing && !FIT[model]) cleanLines(this.inst.root, color, this.power);
@@ -80,17 +89,24 @@ export class CycleView {
       accentTint(r, color);
     }
     this.body.add(this.inst.root); this.inst.play('Drive', 0);
+    // rivals get a low-detail copy for distance; it reuses the processed materials above, so it costs no extra shaders
+    if (!riderKey && !this.inst.missing && ctx.assets.has('lod:' + model)) {
+      const mats = new Map<string, THREE.Material>(); this.inst.root.traverse((o: any) => { if (o.isMesh) mats.set(o.userData.matName ?? o.material.name, o.material); });
+      const l = (this.lod = ctx.assets.instance('lod:' + model)); l.root.traverse((o: any) => { if (o.isMesh) { const m = mats.get(o.material?.name); if (m) o.material = m; } });
+      l.root.position.copy(this.inst.root.position); l.root.rotation.copy(this.inst.root.rotation); l.root.scale.copy(this.inst.root.scale); l.root.visible = false; l.play('Drive', 0); this.body.add(l.root);
+    }
     const rk = riderKey ?? RIDER[model];
-    if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = ctx.assets.instance(rk, { cloneMaterials: true }); revealMaterials(this.rider.root, this.reveal, new THREE.Color(color)); this.rider.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (this.inst.actions.CanopyClose) this.rider.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ this.rider.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = this.rider.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(this.rider.root); }
-    // rivals: a thin unlit outline in their colour, so a dark rider on a dark machine still reads at a distance (and without bloom)
-    if (this.rider && !riderKey) outlineRider(this.rider.root, color);
+    if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = ctx.assets.instance(riderKey ? rk : lodChar(ctx.assets, rk), { cloneMaterials: true }); revealMaterials(this.rider.root, this.reveal, new THREE.Color(color), riderKey ? 0 : 0.9); this.rider.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (this.inst.actions.CanopyClose) this.rider.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ this.rider.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = this.rider.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(this.rider.root); }
+    // rivals read against a dark machine through a fresnel rim in their colour, computed in the rider's own shader: the
+    // old back-face outline was a second skinned copy of every body, which doubled the riders' cost
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, map: glowTex() })); this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.03;
     this.root.add(this.body, this.glow);
   }
-  setRiderVisible(v: boolean) { if (this.rider) this.rider.root.visible = v && !this.fp && this.mounted; }
+  setRiderVisible(v: boolean) { this.riderWanted = v; this.syncRider(); }
+  private syncRider() { if (this.rider) this.rider.root.visible = this.riderWanted && !this.fp && this.mounted && !this.riderFar; }
   /** Start sequence: the rider begins on foot, ahead of and beside the machine (call after the machine is posed). */
   dismount(side: number) {
-    if (!this.rider || !this.riderKey || this.walker) return; this.mounted = false; this.rider.root.visible = false;
+    if (!this.rider || !this.riderKey || this.walker) return; this.mounted = false; this.syncRider();
     const w = (this.walker = this.ctx.assets.instance(this.riderKey, { cloneMaterials: true })); revealMaterials(w.root, this.walkReveal, new THREE.Color(this.color));
     for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = w.root.getObjectByName(n); if (o) o.visible = false; }
     const p = this.root.position, fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), lx = fz * side, lz = -fx * side;
@@ -106,14 +122,14 @@ export class CycleView {
     return k >= 1 ? this.finishWalk() : false;
   }
   /** Seats the rider at once (the walk finished, or the start sequence was skipped). */
-  finishWalk(): boolean { if (this.mounted) return false; this.mounted = true; this.walker?.root.removeFromParent(); this.walker = null; if (this.rider) this.rider.root.visible = !this.fp; return true; }
+  finishWalk(): boolean { if (this.mounted) return false; this.mounted = true; this.walker?.root.removeFromParent(); this.walker = null; this.syncRider(); return true; }
   /**
    * First-person mode swaps the exterior model for the purpose-built cockpit: clean sight lines, no canopy glass in
    * front of the eyes, and the HUD rendered on the dash screen.
    */
   firstPerson(on: boolean) {
     if (on === this.fp) return; this.fp = on;
-    if (on && !this.cockpit && (this.ctx.assets.has('cockpit4') || this.ctx.assets.has('cockpit3') || this.ctx.assets.has('cockpit2'))) { this.cockpit = this.buildCockpit(); this.root.add(this.cockpit); }
+    if (on) this.prepareCockpit();
     if (on && !this.cockpit) {
       const assets = this.ctx.assets, c = assets.instance('cockpit', { cloneMaterials: true }).root, sculpted = assets.has('console');
       c.traverse((o: any) => {
@@ -145,7 +161,7 @@ export class CycleView {
       this.cockpit = c; this.root.add(c);
     }
     if (this.cockpit) this.cockpit.visible = on;
-    this.inst.root.visible = !on; this.glow.visible = !on; if (this.rider) this.rider.root.visible = !on && this.mounted;
+    this.inst.root.visible = !on && !this.lodOn; if (this.lod) this.lod.root.visible = !on && this.lodOn; this.glow.visible = !on; this.syncRider();
   }
   /**
    * The Blender-built cockpit (scripts/blender/build_cockpit_v4.py, falling back to v3 / v2): a wrap-around binnacle
@@ -153,18 +169,26 @@ export class CycleView {
    * pan with pedal plates, a yoke on one swept crossbar that rolls with the steering with the rider's gloved hands on
    * its knurled grips, and a glass canopy on a rear hinge.
    */
+  /** Builds the cockpit up front (hidden), so its shaders compile during loading rather than on the first switch. */
+  prepareCockpit() {
+    const a = this.ctx.assets; if (this.cockpit || !['cockpit5', 'cockpit4', 'cockpit3', 'cockpit2'].some((k) => a.has(k))) return;
+    this.cockpit = this.buildCockpit(); this.cockpit.visible = this.fp; this.root.add(this.cockpit);
+  }
   private buildCockpit() {
-    const assets = this.ctx.assets, key = assets.has('cockpit4') ? 'cockpit4' : assets.has('cockpit3') ? 'cockpit3' : 'cockpit2', c = assets.instance(key, { cloneMaterials: true }).root;
+    const assets = this.ctx.assets, key = ['cockpit5', 'cockpit4', 'cockpit3', 'cockpit2'].find((k) => assets.has(k))!, c = assets.instance(key, { cloneMaterials: true }).root, holo = key === 'cockpit5';
     c.traverse((o: any) => {
       if (!o.isMesh) return; o.castShadow = false; o.frustumCulled = false; const m = o.material, name = m?.name;
-      if (name === 'Screen') o.material = new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, color: 0xb8c4cc, toneMapped: false }); // a little under full, as if seen through the dark glass
+      // v5's display is a free-standing holographic pane; older cockpits set it behind dark glass, a little under full
+      if (name === 'Screen') { o.material = holo ? new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, toneMapped: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }) : new THREE.MeshBasicMaterial({ map: this.ctx.hud.vrTexture, color: 0xb8c4cc, toneMapped: false }); o.renderOrder = 5; }
+      else if (name === 'Tyre') o.material = new THREE.MeshStandardMaterial({ name, color: 0x030405, metalness: 0.3, roughness: 0.38, envMapIntensity: 0.9 });
       else if (name === 'Trim') { m.color.setScalar(0); m.roughness = 0.6; m.envMapIntensity = 0; m.emissive = new THREE.Color(this.color); m.emissiveIntensity = TRIM_EMISSIVE; this.trims.push(m); }
       else if (name === 'Holo') { o.material = holoFrame(this.color); o.renderOrder = 4; }
       else if (name === 'WallLamp') { o.material = new THREE.MeshBasicMaterial({ color: 0x1a2430, toneMapped: false }); this.lamps.push(o.material); }
       else if (name === 'Glass') { o.material = new THREE.MeshStandardMaterial({ name: 'Glass', color: 0xcfeaff, metalness: 0, roughness: 0.03, transparent: true, opacity: 0.09, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 3 }); o.renderOrder = 6; }
       // black glass: near-black with a mirror-smooth coat, so the sun lights make small sharp highlights rather than a grey
       // sheen, and only a dim reflection of the sky; chrome stays as the bright accent (cockpit v3)
-      else if (name === 'Body') o.material = BLACK_GLASS();
+      // v5's cowl runs right under the key light: a satin-gloss finish keeps the sheen without a hot specular blob
+      else if (name === 'Body') o.material = holo ? new THREE.MeshStandardMaterial({ name, color: 0x020203, metalness: 0.35, roughness: 0.36, envMapIntensity: 1.1 }) : BLACK_GLASS();
       // roughness well above a mirror finish on purpose: at 0.09 the key light puts a pinpoint specular on the display
       // hood that bloom then paints as a white disc across the instruments
       else if (name === 'Chrome') o.material = new THREE.MeshStandardMaterial({ name, color: 0x8e979f, metalness: 1, roughness: 0.2, envMapIntensity: 1.1 });
@@ -178,8 +202,11 @@ export class CycleView {
     c.updateMatrixWorld(true); this.yoke = c.getObjectByName('Yoke') ?? null; this.yokeY = this.yoke?.position.y ?? 0; this.canopy = c.getObjectByName('Canopy') ?? null; // the dial nodes (left: speed, right: drive) carry the black-glass gauges' holographic graphics; the needles are retired
     this.gauges = (['DialL', 'DialR'] as const).flatMap((n, i) => { const d = c.getObjectByName(n); if (!d) return []; d.visible = false;
       const g = new HoloGauge(0.05, this.color, i ? 'DRIVE' : 'KM/H'), at = new THREE.Object3D(); at.position.copy(d.position); at.quaternion.copy(d.quaternion); d.parent!.add(at);
-      // node local -Z faces the eye: turn the disc round to face it, and sink it to just in front of the dial face
-      g.mesh.rotation.y = Math.PI; g.mesh.position.z = 0.0045; at.add(g.mesh); return [g]; }); this.canopyK = this.canopyTarget === 1 && this.ctx.engine.elapsed - this.sealAt < 0.5 ? 0 : this.canopyTarget; this.poseCanopy();
+      // v5 panels are bare quads: aim the gauge straight at the eye. Older dial nodes have local -Z facing the eye, so the
+      // disc is turned round to face it, and sunk to just in front of the dial face.
+      if (holo) { at.lookAt(new THREE.Vector3(0, EYE.y, EYE.z)); g.mesh.position.z = 0.004; } else { g.mesh.rotation.y = Math.PI; g.mesh.position.z = 0.0045; }
+      at.add(g.mesh); return [g]; });
+    this.rings = (['WheelF', 'WheelR'] as const).flatMap((n) => { const w = c.getObjectByName(n); return w ? [w] : []; }); this.canopyK = this.canopyTarget === 1 && this.ctx.engine.elapsed - this.sealAt < 0.5 ? 0 : this.canopyTarget; this.poseCanopy();
     if (this.yoke && assets.has('hands')) for (const sx of [1, -1]) {
       // grip ends in cockpit space (glTF: x, y up, z forward), carried into the yoke's frame so the hands roll with it.
       // Each cockpit puts its grips somewhere different, so the anchors come from the model that was actually loaded.
@@ -218,6 +245,7 @@ export class CycleView {
     if (!this.fp || !this.yoke) return;
     this.steerV = damp(this.steerV, clamp(steer, -1, 1), 9, dt); this.throttleV = damp(this.throttleV, clamp(throttle, 0, 1), 7, dt); this.brakeV = damp(this.brakeV, clamp(brake, 0, 1), 9, dt);
     const tt = this.ctx.engine.elapsed, buzz = (0.0025 + speed01 * 0.004 + (boosting ? 0.006 : 0)) * Math.sin(tt * 71);
+    for (const r of this.rings) r.rotation.x += (kmh / 3.6) * dt / 0.57; // the rings roll with the road
     this.yoke.rotation.z = this.steerV * 0.34 + buzz; this.yoke.position.y = this.yokeY + buzz * 0.4 - this.brakeV * 0.008;
     for (const h of this.gloves) { h.pivot.quaternion.setFromAxisAngle(h.axis, h.side < 0 ? -this.throttleV * 0.3 : 0); h.g.pose(0.88 + this.brakeV * 0.12); }
     this.driveArms();
@@ -233,11 +261,11 @@ export class CycleView {
     for (const m of this.trims) m.emissiveIntensity = TRIM_EMISSIVE * this.power.value * (state === 'on' ? 1.7 + 0.6 * Math.sin(tt * 22) : 1);
   }
   /** End of the event: the canopy lifts. */
-  unseal() { if (this.canopyTarget !== 0) { this.canopyTarget = 0; if (this.inst.actions.CanopyOpen) { this.inst.play('CanopyOpen', 0.1, true); this.fireT = this.inst.actions.CanopyOpen.getClip().duration; this.parked = true; } } }
+  unseal() { if (this.canopyTarget !== 0) { this.canopyTarget = 0; if (this.inst.actions.CanopyOpen) { this.inst.play('CanopyOpen', 0.1, true); this.lod?.play('CanopyOpen', 0.1, true); this.fireT = this.inst.actions.CanopyOpen.getClip().duration; this.parked = true; } } }
   /** Start sequence, step 1: the canopy closes over the rider (models that have one). */
-  seal() { if (this.canopyTarget !== 1) { this.canopyTarget = 1; this.sealAt = this.ctx.engine.elapsed; } if (this.inst.actions.CanopyClose) { this.inst.play('CanopyClose', 0.1, true); this.fireT = this.inst.actions.CanopyClose.getClip().duration; } }
+  seal() { if (this.canopyTarget !== 1) { this.canopyTarget = 1; this.sealAt = this.ctx.engine.elapsed; } if (this.inst.actions.CanopyClose) { this.inst.play('CanopyClose', 0.1, true); this.lod?.play('CanopyClose', 0.1, true); this.fireT = this.inst.actions.CanopyClose.getClip().duration; } }
   /** Start sequence, step 2: the drive fires and the machine is released. */
-  launch() { this.parked = false; if (this.inst.actions.Fire) { this.inst.play('Fire', 0.05, true); this.fireT = Math.min(0.6, this.inst.actions.Fire.getClip().duration); } }
+  launch() { this.parked = false; if (this.inst.actions.Fire) { this.inst.play('Fire', 0.05, true); this.lod?.play('Fire', 0.05, true); this.fireT = Math.min(0.6, this.inst.actions.Fire.getClip().duration); } }
   /** First-person cockpit lighting level, 0..1: the instruments power up during the start sequence. */
   setPower(k: number) { this.power.value = k; for (const m of this.trims) m.emissiveIntensity = TRIM_EMISSIVE * k; }
   /** Overrides the heading for this frame (first-person eases through a turn with the rider). */
@@ -249,8 +277,12 @@ export class CycleView {
     this.lean = damp(this.lean, 0, snap ? 7 : 0, dt); this.body.rotation.z = this.lean; this.body.rotation.x = pitch; if (this.cockpit) this.cockpit.rotation.x = pitch;
     this.fireT -= dt;
     if (this.canopy && this.canopyK !== this.canopyTarget) { if (!this.canopyMoving && this.fp) this.ctx.audio.sfx('canopy'); this.canopyMoving = true; this.canopyK = this.canopyTarget > this.canopyK ? Math.min(this.canopyTarget, this.canopyK + dt / 0.9) : Math.max(this.canopyTarget, this.canopyK - dt / 0.9); this.poseCanopy(); } else this.canopyMoving = false;
-    if (this.fireT <= 0) { const a = this.parked ? (this.inst.actions.CanopyOpenIdle ? 'CanopyOpenIdle' : 'Idle') : this.inst.actions.DriveFast && speed01 > 0.75 ? 'DriveFast' : 'Drive'; this.inst.play(a, 0.3); if (!this.parked && this.inst.actions[a]) this.inst.actions[a].timeScale = 0.4 + speed01 * 1.6; }
-    this.inst.mixer?.update(dt);
+    if (this.fireT <= 0) { const a = this.parked ? (this.inst.actions.CanopyOpenIdle ? 'CanopyOpenIdle' : 'Idle') : this.inst.actions.DriveFast && speed01 > 0.75 ? 'DriveFast' : 'Drive'; this.inst.play(a, 0.3); this.lod?.play(a, 0.3); if (!this.parked && this.inst.actions[a]) this.inst.actions[a].timeScale = 0.4 + speed01 * 1.6; }
+    // distance LOD, measured from last frame's eye: the machine swaps to its light copy and the rider drops out
+    const eng = this.ctx.engine, vp = eng.viewPos, d = Math.hypot(x - vp.x, y - vp.y, z - vp.z), k = eng.lodScale;
+    const far = !!this.lod && !this.fp && d > (this.lodOn ? 26 : 30) * k; if (far !== this.lodOn) { this.lodOn = far; this.inst.root.visible = !far; this.lod!.root.visible = far; }
+    const rf = !this.fp && d > (this.riderFar ? 38 : 42) * k; if (rf !== this.riderFar) { this.riderFar = rf; this.syncRider(); }
+    (this.lodOn ? this.lod!.mixer : this.inst.mixer)?.update(dt);
   }
 }
 /**
@@ -361,12 +393,4 @@ export class StartSequence {
     const rig = this.ctx.engine.rig, fx = Math.sin(yaw), fz = Math.cos(yaw), sx = px + fz * 4.4 - fx * 3, sz = pz - fx * 4.4 - fz * 3;
     rig.rotation.set(0, Math.atan2(-(px - sx), -(pz - sz)), 0); const off = this.tmp.copy(offset).setY(0).applyQuaternion(rig.quaternion); rig.position.set(sx - off.x, py + this.ctx.settings.vr.height, sz - off.z);
   }
-}
-
-/** Adds a back-face shell, pushed out along the normals, to every skinned body mesh: a crisp neon silhouette that follows the animation. */
-function outlineRider(root: THREE.Object3D, color: number) {
-  const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.15), side: THREE.BackSide });
-  mat.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed += normalize(objectNormal) * 0.016;'); };
-  const meshes: THREE.SkinnedMesh[] = []; root.traverse((o: any) => { if (o.isSkinnedMesh && !/disc|shield|prop/i.test(o.name + (o.material?.name ?? ''))) meshes.push(o); });
-  for (const m of meshes) { const sh = new THREE.SkinnedMesh(m.geometry, mat); sh.bind(m.skeleton, m.bindMatrix); sh.position.copy(m.position); sh.quaternion.copy(m.quaternion); sh.scale.copy(m.scale); sh.frustumCulled = false; sh.renderOrder = -1; sh.castShadow = false; m.parent!.add(sh); }
 }

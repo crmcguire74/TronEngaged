@@ -58,8 +58,8 @@ export class App {
     this.audio.onSubtitle = (t) => this.hud.subtitle(t);
     this.xr.onSupport = () => this.menuDom.render();
     this.xr.onError = (m) => this.note(m);
-    this.xr.onStart = () => { this.audio.unlock(); this.ui.style.visibility = 'hidden'; this.vr.setActive(true); };
-    this.xr.onEnd = () => { this.ui.style.visibility = ''; this.vr.setActive(false); this.engine.rig.position.set(0, 0, 0); this.engine.rig.rotation.set(0, 0, 0); if (this.state === 'play') this.pause(); };
+    this.xr.onStart = () => { this.audio.unlock(); this.ui.style.visibility = 'hidden'; this.vr.setActive(true); this.vfx.setFlashLight(false); this.perf = 0; this.applyPerf(); };
+    this.xr.onEnd = () => { this.vfx.setFlashLight(true); this.ui.style.visibility = ''; this.vr.setActive(false); this.engine.rig.position.set(0, 0, 0); this.engine.rig.rotation.set(0, 0, 0); if (this.state === 'play') this.pause(); };
     const qa = new URLSearchParams(location.search).has('qa'); // QA runs drive frames manually in a background tab
     document.addEventListener('visibilitychange', () => { if (qa) return; if (document.hidden && this.state === 'play') this.pause(); this.audio.suspend(document.hidden); });
     addEventListener('pagehide', () => void this.store.flush());
@@ -122,10 +122,21 @@ export class App {
     void this.assets.load(sessionAssets(c.tier, s), (d, n) => this.progress(d / n)).then(() => {
       this.session?.dispose(); this.session = null; this.engine.derez = this.engine.derezTarget = 0; this.menuScene = null;
       try { this.session = createSession(this.ctx, c.tier, diff, c.salt, c.stage); } catch (e) { console.error(e); this.note('This tier failed to initialise. Returning to the command centre.'); this.loadingEl.style.display = 'none'; this.toMenu(); return; }
+      this.prewarm();
       this.loadingEl.style.display = 'none'; this.state = 'play'; this.playClock = 0;
       if (c.track !== 'endless') { this.store.data.last = { game: c.tier.mode === 'discs' ? 'discs' : 'cycles', track: c.track, tier: c.tier.id }; this.store.save(); }
       if (this.assets.errors.length) this.note('Some assets failed to load; placeholders are in use.');
     });
+  }
+  /**
+   * Compiles every shader the new scene can use before the first frame, hidden objects included (cockpit, effects
+   * pools, LOD copies). Otherwise each one compiles the first time it appears, mid-race, as a dropped frame: on a
+   * headset that is a visible judder. Fire-and-forget: KHR_parallel_shader_compile finishes it off the main thread.
+   */
+  private prewarm() {
+    const hidden: THREE.Object3D[] = []; this.engine.scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    try { void this.engine.renderer.compileAsync(this.engine.scene, this.engine.camera).catch(() => {}); } catch { /* older drivers: compile lazily */ }
+    for (const o of hidden) o.visible = false;
   }
   pause() { if (this.state !== 'play' || !this.session || this.session.phase === 'done') return; this.state = 'paused'; this.xr.clearEdges(); this.xr.showHands = true; this.input.setPointerLock(false); this.audio.engine(false); this.menu.reset(() => pauseScreen(this)); }
   resume() { if (this.state !== 'paused') return; this.menu.close(); this.state = 'play'; this.xr.clearEdges(); if (this.session?.mode === 'discs') this.input.setPointerLock(true); }
@@ -166,7 +177,7 @@ export class App {
 
   // ------------------------------------------------------------ frame
   private frame(time: number) {
-    const dt = Math.min(0.1, Math.max(0.0005, (time - this.last) / 1000 || 0.016)); this.last = time; this.fps += (1 / dt - this.fps) * 0.05;
+    const dt = Math.min(0.1, Math.max(0.0005, (time - this.last) / 1000 || 0.016)); this.last = time; this.fps += (1 / dt - this.fps) * 0.05; this.govern(dt);
     const xr = this.xr.presenting; this.input.xr = xr ? this.xr.actions : this.qaActions;
     const a = this.input.update(dt);
     if (this.state === 'splash') this.splash?.update(dt, a);
@@ -181,6 +192,19 @@ export class App {
     this.vr.showInput = this.state === 'paused'; this.vr.update(dt, this.state === 'play');
     this.engine.render(dt);
   }
+  /**
+   * Frame-time governor (headset only). When frames run long for about a second, detail is pulled in: LOD distances
+   * shrink, effects thin out and foveation goes to maximum. It eases back once there is headroom again. Desktop keeps
+   * its quality setting, since a dropped frame there is a stutter rather than discomfort.
+   */
+  private slowT = 0; private fastT = 0; perf = 0;
+  private govern(dt: number) {
+    const xr = this.xr.presenting, target = 1 / Math.max(60, (this.engine.renderer.xr.getSession() as any)?.frameRate ?? 72);
+    if (!xr) { if (this.perf) { this.perf = 0; this.applyPerf(); } return; }
+    if (dt > target * 1.18) { this.slowT += dt; this.fastT = 0; } else if (dt < target * 1.05) { this.fastT += dt; this.slowT = Math.max(0, this.slowT - dt * 0.5); }
+    if (this.slowT > 1 && this.perf < 2) { this.perf++; this.slowT = 0; this.applyPerf(); } else if (this.fastT > 8 && this.perf > 0) { this.perf--; this.fastT = 0; this.applyPerf(); }
+  }
+  private applyPerf() { this.engine.lodScale = [1, 0.7, 0.5][this.perf]; this.vfx.density = [1, 0.6, 0.35][this.perf]; try { this.engine.renderer.xr.setFoveation(this.perf ? 1 : this.store.data.settings.quality === 'high' ? 0.5 : 1); } catch { /* unsupported */ } }
   /** QA hook: steps the frame loop synchronously (background tabs throttle requestAnimationFrame). Not used by gameplay. */
   debugAdvance(seconds: number, step = 1 / 60) { let t = this.last; const n = Math.round(seconds / step); for (let i = 0; i < n; i++) { t += step * 1000; this.frame(t); } return this.state; }
   get difficulty(): DifficultyId { return this.store.data.settings.difficulty; }

@@ -13,6 +13,13 @@ export class Vfx {
   private light = new THREE.PointLight(0xffffff, 0, 30, 2); private lightT = 0;
   private m4 = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private e = new THREE.Euler(); private c = new THREE.Color();
   flashes = true;
+  /** 0..1 particle budget, lowered by the headset frame-time governor. Counts scale with it; nothing else changes. */ density = 1;
+  private pLive = false;
+  /**
+   * The flash light is removed (not dimmed) in a headset: an unused point light still costs a lighting loop in every
+   * lit material on screen. Toggling changes the shader light count, so it is done once per VR entry and exit only.
+   */
+  setFlashLight(on: boolean) { this.light.visible = on; if (!on) this.light.intensity = 0; this.pLive = true; }
   // derez: solid cubes that burst, bounce on the deck, then lift back up their light pillar
   private cubes: THREE.InstancedMesh; private cPos = new Float32Array(MAX_CUBES * 3); private cVel = new Float32Array(MAX_CUBES * 3); private cRot = new Float32Array(MAX_CUBES * 4); private cLife = new Float32Array(MAX_CUBES * 2); private cScale = new Float32Array(MAX_CUBES); private cHome = new Float32Array(MAX_CUBES * 4); private cNext = 0;
   private pillars: { mesh: THREE.Mesh; t: number; dur: number; r: number; h: number }[] = []; private plNext = 0;
@@ -58,7 +65,7 @@ export class Vfx {
    * pillar of light, with staggered shockwaves and embers. `floorR` is how far the deck reaches before cubes fall away.
    */
   derez(x: number, y: number, z: number, color: number, o: { height?: number; dir?: { x: number; z: number }; count?: number; power?: number; floorR?: number; big?: boolean; inner?: number } = {}) {
-    const h = o.height ?? 1.8, n = Math.min(o.count ?? 220, MAX_CUBES), pw = o.power ?? 7, big = !!o.big, dx = o.dir?.x ?? 0, dz = o.dir?.z ?? 0, hot = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.75), dim = new THREE.Color(color).multiplyScalar(0.5); this.c.setHex(color);
+    const h = o.height ?? 1.8, n = Math.min(Math.round((o.count ?? 220) * (0.4 + 0.6 * this.density)), MAX_CUBES), pw = o.power ?? 7, big = !!o.big, dx = o.dir?.x ?? 0, dz = o.dir?.z ?? 0, hot = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.75), dim = new THREE.Color(color).multiplyScalar(0.5); this.c.setHex(color);
     for (let i = 0; i < n; i++) {
       const k = this.cNext; this.cNext = (this.cNext + 1) % MAX_CUBES; const up = Math.random(), a = Math.random() * 6.283, body = 0.12 + 0.2 * Math.sin(Math.PI * Math.min(1, up * 1.15)), r = (o.inner ?? 0) + body * Math.sqrt(Math.random());
       this.cPos[k * 3] = x + Math.cos(a) * r; this.cPos[k * 3 + 1] = y + 0.1 + up * h; this.cPos[k * 3 + 2] = z + Math.sin(a) * r;
@@ -88,6 +95,7 @@ export class Vfx {
 
   /** Burst of sparks. `dir` biases the cone (e.g. a surface normal for ricochets). */
   sparks(x: number, y: number, z: number, color: number, count = 24, speed = 9, life = 0.5, dir?: { x: number; y: number; z: number }, gravity = 9, size = 0.5) {
+    count = Math.max(1, Math.round(count * this.density)); this.pLive = true;
     this.c.setHex(color);
     for (let i = 0; i < count; i++) {
       const k = this.pNext; this.pNext = (this.pNext + 1) % MAX_P;
@@ -101,6 +109,7 @@ export class Vfx {
   }
   /** Rising motes used when a model assembles from particles. */
   motes(x: number, y: number, z: number, color: number, radius: number, height: number, count = 30) {
+    count = Math.max(1, Math.round(count * this.density)); this.pLive = true;
     this.c.setHex(color);
     for (let i = 0; i < count; i++) {
       const k = this.pNext; this.pNext = (this.pNext + 1) % MAX_P; const a = Math.random() * 6.283, r = radius * Math.sqrt(Math.random());
@@ -111,6 +120,7 @@ export class Vfx {
   }
   /** Shatter: the body breaks into hardlight shards that scatter along `dir` and dissolve. */
   shatter(x: number, y: number, z: number, color: number, count = 70, height = 1.8, dir?: { x: number; z: number }, power = 7) {
+    count = Math.max(1, Math.round(count * this.density));
     this.c.setHex(color);
     for (let i = 0; i < count; i++) {
       const k = this.sNext; this.sNext = (this.sNext + 1) % MAX_SHARDS; const a = Math.random() * 6.283, r = Math.random() * 0.4;
@@ -151,12 +161,14 @@ export class Vfx {
     }
     if (live) this.cubes.instanceMatrix.needsUpdate = true;
     for (const p of this.pillars) { if (!p.mesh.visible) continue; p.t += dt / p.dur; if (p.t >= 1) { p.mesh.visible = false; continue; } const u = (p.mesh.material as THREE.ShaderMaterial).uniforms; u.uAmt.value = Math.min(1, p.t * 14) * (1 - p.t) * (1 - p.t); u.uTime.value += dt; const r = p.r * (0.25 + 0.75 * (1 - p.t) * (1 - p.t)); p.mesh.scale.set(r, p.h * Math.min(1, p.t * 7), r); }
-    for (let k = 0; k < MAX_P; k++) {
-      const l = this.pLife[k * 2]; if (l <= 0) continue; this.pLife[k * 2] = l - dt;
+    // particles: skipped entirely (no loop, no upload) once every one has expired
+    let pAny = false;
+    if (this.pLive) for (let k = 0; k < MAX_P; k++) {
+      const l = this.pLife[k * 2]; if (l <= 0) continue; this.pLife[k * 2] = l - dt; pAny = true;
       this.pVel[k * 3 + 1] -= this.pGrav[k] * dt; const d = 1 - 1.6 * dt; this.pVel[k * 3] *= d; this.pVel[k * 3 + 2] *= d;
       this.pPos[k * 3] += this.pVel[k * 3] * dt; this.pPos[k * 3 + 1] += this.pVel[k * 3 + 1] * dt; this.pPos[k * 3 + 2] += this.pVel[k * 3 + 2] * dt;
     }
-    this.pGeo.attributes.position.needsUpdate = true; this.pGeo.attributes.life.needsUpdate = true; this.pGeo.attributes.color.needsUpdate = true; this.pGeo.attributes.size.needsUpdate = true;
+    if (this.pLive) { this.pGeo.attributes.position.needsUpdate = true; this.pGeo.attributes.life.needsUpdate = true; this.pGeo.attributes.color.needsUpdate = true; this.pGeo.attributes.size.needsUpdate = true; this.pLive = pAny; }
     let any = false;
     for (let k = 0; k < MAX_SHARDS; k++) {
       const l = this.sLife[k * 2]; if (l <= 0) continue; any = true; const nl = l - dt; this.sLife[k * 2] = nl;
@@ -167,9 +179,9 @@ export class Vfx {
     }
     if (any) this.shards.instanceMatrix.needsUpdate = true;
     for (const r of this.rings) { if (!r.mesh.visible) continue; r.t += dt / r.dur; if (r.t >= 1) { r.mesh.visible = false; continue; } const e = 1 - (1 - r.t) * (1 - r.t); r.mesh.scale.setScalar(r.from + (r.to - r.from) * e); (r.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - r.t) * 0.6; }
-    if (this.lightT > 0) { this.lightT -= dt; this.light.intensity *= Math.exp(-14 * dt); if (this.lightT <= 0) this.light.intensity = 0; }
+    if (this.lightT > 0) { this.lightT -= dt; this.light.intensity *= Math.exp(-14 * dt); if (this.lightT <= 0) this.light.intensity = 0; this.pLive = true; }
   }
-  clear() { this.queue.length = 0; this.cLife.fill(0); for (let i = 0; i < MAX_CUBES; i++) this.cubes.setMatrixAt(i, this.m4.makeScale(0, 0, 0)); this.cubes.instanceMatrix.needsUpdate = true; for (const p of this.pillars) p.mesh.visible = false; this.pLife.fill(0); this.sLife.fill(0); this.m4.makeScale(0, 0, 0); for (let i = 0; i < MAX_SHARDS; i++) this.shards.setMatrixAt(i, this.m4); this.shards.instanceMatrix.needsUpdate = true; for (const r of this.rings) r.mesh.visible = false; this.light.intensity = 0; }
+  clear() { this.queue.length = 0; this.cLife.fill(0); for (let i = 0; i < MAX_CUBES; i++) this.cubes.setMatrixAt(i, this.m4.makeScale(0, 0, 0)); this.cubes.instanceMatrix.needsUpdate = true; for (const p of this.pillars) p.mesh.visible = false; this.pLife.fill(0); this.sLife.fill(0); this.m4.makeScale(0, 0, 0); for (let i = 0; i < MAX_SHARDS; i++) this.shards.setMatrixAt(i, this.m4); this.shards.instanceMatrix.needsUpdate = true; for (const r of this.rings) r.mesh.visible = false; this.light.intensity = 0; this.pLive = true; }
 }
 
 /** Fading luminous ribbon that follows a moving point (disc trails, racing light tails). */

@@ -70,10 +70,16 @@ export class XRManager {
     try {
       const session: XRSession = await xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
       const r = this.engine.renderer; r.xr.setReferenceSpaceType('local-floor');
-      // native-resolution framebuffer (capped) — the default scale looks pixelated on standalone headsets
-      try { const native = (window as any).XRWebGLLayer?.getNativeFramebufferScaleFactor?.(session) ?? 1; r.xr.setFramebufferScaleFactor(Math.min(native, this.settings.quality === 'low' ? 1 : 1.3)); } catch { /* keep default */ }
+      // Eye-buffer resolution is the biggest single cost on a standalone headset: every pixel is shaded twice. The
+      // runtime's default buffer is already tuned for the device, so only High asks for more than it (and never above
+      // native); Low trades some sharpness for headroom. This was 1.3x on Medium and was the main cause of lag.
+      try { const native = (window as any).XRWebGLLayer?.getNativeFramebufferScaleFactor?.(session) ?? 1, q = this.settings.quality; r.xr.setFramebufferScaleFactor(q === 'high' ? Math.min(native, 1.15) : q === 'low' ? 0.8 : 1); } catch { /* keep default */ }
       session.addEventListener('end', () => { this.presenting = false; this.engine.resize(); this.engine.camera.position.set(0, 0, 0); this.engine.camera.quaternion.identity(); this.onEnd(); });
-      await r.xr.setSession(session); try { r.xr.setFoveation(1); } catch { /* fixed foveation unsupported */ } this.presenting = true; this.onStart();
+      await r.xr.setSession(session); try { r.xr.setFoveation(this.settings.quality === 'high' ? 0.5 : 1); } catch { /* fixed foveation unsupported */ }
+      // Lock a refresh rate the scene can hold. A steady 72 Hz feels far better than a 90 Hz target that keeps dropping
+      // frames (each miss is a visible judder); High asks for 90 where the device offers it.
+      try { const rates = (session as any).supportedFrameRates as Float32Array | undefined, want = this.settings.quality === 'high' ? 90 : 72; if (rates?.length) { const pick = [...rates].reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a)); await (session as any).updateTargetFrameRate?.(pick); } } catch { /* fixed rate */ }
+      this.presenting = true; this.onStart();
     } catch (e: any) { this.onError(e?.name === 'SecurityError' || e?.name === 'NotAllowedError' ? 'VR permission was denied.' : 'Could not start VR: ' + (e?.message ?? e)); }
   }
   exit() { void this.engine.renderer.xr.getSession()?.end(); }

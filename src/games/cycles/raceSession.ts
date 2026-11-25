@@ -126,7 +126,7 @@ export class RaceSession extends BaseSession {
     ctx.hud.show('race'); ctx.audio.playMusic('race'); ctx.audio.ambience(tier.environment); ctx.audio.intensity = 0.3; ctx.audio.setCrowdBed(0);
     const stages = Number(tier.params.stages ?? 1);
     ctx.hud.banner(`TIER ${tier.endless ? '∞' : String(tier.id).padStart(2, '0')} — ${tier.name.toUpperCase()}${stages > 1 ? ` · STAGE ${stage + 1}/${stages}` : ''}`, `${FORMAT_LABEL[cfg.format]} — ${this.goal()}`, this.introDur * 1000 - 400);
-    this.camYaw = this.yawPrev = sim.player.h; this.view(0, 1, ctx.input.actions); this.start = new StartSequence(ctx, this.cv, this.colors, sim.racers.indexOf(sim.player));
+    this.cv[sim.racers.indexOf(sim.player)].prepareCockpit(); this.camYaw = this.yawPrev = sim.player.h; this.view(0, 1, ctx.input.actions); this.start = new StartSequence(ctx, this.cv, this.colors, sim.racers.indexOf(sim.player));
   }
   private goal() { const c = this.sim.cfg; return c.format === 'timetrial' ? `beat ${fmtTime(this.sim.parTime)}` : c.format === 'pursuit' ? 'catch the runner before it finishes' : c.format === 'gauntlet' ? 'finish with integrity remaining' : c.format === 'elimination' ? 'last place is cut at intervals — survive' : `finish in the top ${c.passPlace}`; }
 
@@ -312,9 +312,10 @@ export class RaceSession extends BaseSession {
     if (this.phase === 'play') audio.intensity = damp(audio.intensity, clamp(0.6 + sp01 * 0.25 + (P.lap >= sim.totalLaps() - 1 ? 0.15 : 0), 0, 1), 2, dt);
     const laps = sim.totalLaps(), solo = this.format === 'timetrial' || this.format === 'gauntlet', active = sim.racers.filter((r) => !r.out).length;
     const tgt = sim.racers[0]; const data: Record<string, any> = { tier: this.tier, speed: P.speed, boost: P.boost, boosting: P.boosting, drift: P.drifting, draft: P.draft, pulse: sim.lightwalls ? P.wallCd : P.pulseCd, abilityName: sim.lightwalls ? 'LIGHT WALL' : 'PULSE', abilityKey: ctl(dev, 'E', 'B', xr.labels.ability), wallOn: sim.lightwalls ? P.wallT : 0, wallLay: WALL_LAY, wallMax: sim.lightwalls ? WALL_COOLDOWN : 0, takedowns: this.kills, place: P.place, field: active, active, solo, time: sim.time, best: sim.stats.bestLap, par: this.format === 'timetrial' ? sim.parTime : 0, score: 0, format: FORMAT_LABEL[this.format], storm: this.storm,
-      lapLabel: T.closed ? `LAP ${clamp(P.lap + 1, 1, laps)}/${laps}` : `${Math.round((P.idx / T.n) * 100)}%`, radar: { kind: 'track', pts: this.radarPts, closed: T.closed, extent: this.ext.r, cx: this.ext.cx, cz: this.ext.cz, hazards: sim.hazards, walls: sim.walls.length ? sim.walls.filter((_, i) => i % 2 === 0).map((w) => ({ x0: w.x0, z0: w.z0, x1: w.x1, z1: w.z1, color: css(this.colors[w.owner - 1]) })) : null, racers: sim.racers.map((r, i) => ({ x: r.x, z: r.z, h: r.h, color: css(this.colors[i]), player: r.isPlayer, out: r.out || r.downT > 0 })) } };
+      lapLabel: T.closed ? `LAP ${clamp(P.lap + 1, 1, laps)}/${laps}` : `${Math.round((P.idx / T.n) * 100)}%`, radar: this.radarFn ??= () => { const sim = this.sim, T = sim.track; return { kind: 'track', pts: this.radarPts, closed: T.closed, extent: this.ext.r, cx: this.ext.cx, cz: this.ext.cz, hazards: sim.hazards, walls: sim.walls.length ? sim.walls.filter((_, i) => i % 2 === 0).map((w) => ({ x0: w.x0, z0: w.z0, x1: w.x1, z1: w.z1, color: css(this.colors[w.owner - 1]) })) : null, racers: sim.racers.map((r, i) => ({ x: r.x, z: r.z, h: r.h, color: css(this.colors[i]), player: r.isPlayer, out: r.out || r.downT > 0 })) }; } };
     if (this.format === 'gauntlet') data.integrity = P.integrity; if (this.format === 'elimination' && this.phase === 'play') data.elim = sim.elimT; if (this.format === 'pursuit' && !tgt.out) data.gap = Math.max(0, Math.round((tgt.progress - P.progress) * T.step));
     hud.update(data);
   }
+  private radarFn: (() => any) | null = null;
   dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
 }

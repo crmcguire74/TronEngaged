@@ -20,6 +20,8 @@ export class Engine {
   private fadeMesh: THREE.Mesh; fade = 0; fadeTarget = 0; fadeSpeed = 3;
   private vignette: THREE.Mesh; vignetteAmount = 0;
   /** 0..1: the view breaks up into squares of light that wink out. Works in VR (it is a mesh on the camera). */ derez = 0; derezTarget = 0; derezSpeed = 2; private derezMesh: THREE.Mesh;
+  /** Eye position at the last render, for distance LODs (one frame stale, which nothing can see). */ readonly viewPos = new THREE.Vector3();
+  /** Multiplies every LOD distance: below 1 pulls detail in sooner. Lowered by the frame-time governor under load. */ lodScale = 1;
   elapsed = 0; private stats = { calls: 0, triangles: 0 } as { calls: number; triangles: number };
 
   constructor(canvas: HTMLCanvasElement) {
@@ -87,6 +89,7 @@ export class Engine {
     this.camera.position.sub(this.shakeOff); this.shakeOff.set(0, 0, 0);
     if (this.shake > 0.001 && !xr) { const s = this.shake * this.shake * 0.22; this.shakeOff.set((Math.random() - 0.5) * s, (Math.random() - 0.5) * s, 0); this.camera.position.add(this.shakeOff); this.shake = Math.max(0, this.shake - dt * 2.4); }
     if (xr || !this.useBloom) this.renderer.render(this.scene, this.camera); else this.composer.render(dt);
+    this.camera.getWorldPosition(this.viewPos);
   }
   info() { const i = this.renderer.info; return { calls: this.stats.calls, triangles: this.stats.triangles, geometries: i.memory.geometries, textures: i.memory.textures }; }
 }
