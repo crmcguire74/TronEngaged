@@ -130,7 +130,7 @@ export class RaceSession extends BaseSession {
     ctx.hud.show('race'); ctx.audio.playMusic('race'); ctx.audio.ambience(tier.environment); ctx.audio.intensity = 0.3; ctx.audio.setCrowdBed(0);
     const stages = Number(tier.params.stages ?? 1);
     ctx.hud.banner(`TIER ${tier.endless ? '∞' : String(tier.id).padStart(2, '0')} — ${tier.name.toUpperCase()}${stages > 1 ? ` · STAGE ${stage + 1}/${stages}` : ''}`, `${FORMAT_LABEL[cfg.format]} — ${this.goal()}`, this.introDur * 1000 - 400);
-    this.cv[sim.racers.indexOf(sim.player)].prepareCockpit(); this.camYaw = this.yawPrev = sim.player.h; this.view(0, 1, ctx.input.actions); this.start = new StartSequence(ctx, this.cv, this.colors, sim.racers.indexOf(sim.player));
+    ctx.xr.discGesture = sim.discsOn; this.cv[sim.racers.indexOf(sim.player)].prepareCockpit(); this.camYaw = this.yawPrev = sim.player.h; this.view(0, 1, ctx.input.actions); this.start = new StartSequence(ctx, this.cv, this.colors, sim.racers.indexOf(sim.player));
   }
   private goal() { const c = this.sim.cfg; return c.format === 'timetrial' ? `beat ${fmtTime(this.sim.parTime)}` : c.format === 'pursuit' ? 'catch the runner before it finishes' : c.format === 'gauntlet' ? 'finish with integrity remaining' : c.format === 'elimination' ? 'last place is cut at intervals — survive' : `finish in the top ${c.passPlace}`; }
 
@@ -146,7 +146,7 @@ export class RaceSession extends BaseSession {
   protected onStart() { this.ctx.audio.intensity = 0.8; for (const v of this.cv) v.launch(); this.ctx.audio.sfx('boost'); }
 
   protected step(dt: number, a: Actions, first: boolean) {
-    const it = this.intent, P = this.sim.player; it.steer = a.steer; it.accel = a.accel; it.brake = a.brake; it.ability = first && a.ability;
+    const it = this.intent, P = this.sim.player; it.steer = a.steer; it.accel = a.accel; it.brake = a.brake; it.ability = first && a.ability; it.disc = first && a.disc;
     if (first) { if (a.boost && !this.boostPrev) this.surgeT = 1.15; this.boostPrev = a.boost; } this.surgeT -= dt; it.boost = a.boost || this.surgeT > 0;
     if (this.ctx.settings.steerAssist) { const hw = this.sim.track.width / 2, k = Math.abs(P.d) / hw; if (k > 0.68) it.steer = clamp(it.steer - Math.sign(P.d) * (k - 0.68) * 2.2, -1, 1); }
     this.sim.step(dt, it); for (const e of this.sim.events) this.onEvent(e); this.sim.events.length = 0;
@@ -212,6 +212,14 @@ export class RaceSession extends BaseSession {
       case 'wallHit': audio.sfx('crash'); hud.flash('hurt'); hud.toast('DEREZZED ON A LIGHT WALL', 'danger'); break;
       case 'pulse': vfx.ring(e.x, e.y + 0.4, e.z, col, 0.5, 13, 0.5); audio.sfx('power', mine ? undefined : e); if (!mine && this.sim.player.stun > 0) hud.toast('PULSED', 'danger'); break;
       case 'integrity': hud.toast(`INTEGRITY ${e.left}`, 'danger'); break;
+      case 'discThrow': audio.sfx('throw', mine ? undefined : e); if (e.atPlayer) { hud.toast('DISC INCOMING — STEER OUT OF ITS LANE', 'danger'); hud.flash('warn'); audio.sfx('tellHoming'); xr.pulse('both', 0.4, 60); } break;
+      case 'discHit': {
+        vfx.shatter(e.x, e.y, e.z, e.player ? 0xff2a14 : this.colors[e.id - 1], 40, 1, undefined, 6); vfx.ring(e.x, e.y, e.z, 0xffffff, 0.3, 4, 0.35); audio.sfx('hit', e.player ? undefined : e);
+        if (e.player) { hud.toast('DISC HIT — STALLED', 'danger'); hud.flash('hurt'); engine.hurt(0.9, e); audio.sfx('grunt'); engine.addShake(0.6); xr.pulse('both', 1, 220); input.rumble(1, 0.8, 240); }
+        else if (e.by === this.sim.player.id) { hud.toast('DISC HIT — RIVAL STALLED', 'score'); audio.cheer(0.7); this.slowmo(0.35, 0.7); xr.pulse('both', 0.6, 100); }
+        break;
+      }
+      case 'discSpent': vfx.sparks(e.x, e.y, e.z, 0xffffff, 10, 4, 0.3); break;
       case 'interceptorDrop': {
         // the drop is always survivable, so the coaching says which way to go rather than just warning
         vfx.ring(e.x, e.y + 0.3, e.z, JET_WALL, 0.5, 7, 0.45); audio.sfx('interfere'); audio.sfx('barrierDrop', e); audio.sfx('interceptorPass', e);
@@ -312,6 +320,7 @@ export class RaceSession extends BaseSession {
         if (P.wallT > 0) tip = 'LIGHT WALL ON — IT TRAILS BEHIND YOU'; else if (tail && P.wallCd <= 0 && (this.tier.id <= 12 || !this.walled)) tip = `RIVAL ON YOUR TAIL — PRESS ${key} TO DROP YOUR LIGHT WALL`;
         else if (!this.walled && !tip && sim.time > 5 && sim.time < 16) tip = `LIGHT WALL (${key}): LAYS A WALL BEHIND YOU FOR 2 SECONDS · A RIVAL THAT HITS IT IS DEREZZED`;
       }
+      if (sim.discsOn && !tip && sim.time > 3 && this.discTip < 2) { const key = ctl(dev, 'Q', 'Y', 'REACH OVER YOUR SHOULDER, SQUEEZE, SWING AND LET GO'); tip = `DISCS LIVE: ${key} — HURL A DISC AT THE RIDER AHEAD · THEIRS STALL YOU, SO STEER OUT OF THEIR LANE`; if (sim.time > 14) this.discTip = 2; }
       hud.coach(tip);
     }
     cam.getWorldPosition(this.v); cam.getWorldDirection(this.v2); audio.listener(this.v.x, this.v.y, this.v.z, this.v2.x, this.v2.y, this.v2.z);
@@ -321,8 +330,31 @@ export class RaceSession extends BaseSession {
     const tgt = sim.racers[0]; const data: Record<string, any> = { tier: this.tier, speed: P.speed, boost: P.boost, boosting: P.boosting, drift: P.drifting, draft: P.draft, pulse: sim.lightwalls ? P.wallCd : P.pulseCd, abilityName: sim.lightwalls ? 'LIGHT WALL' : 'PULSE', abilityKey: ctl(dev, 'E', 'B', xr.labels.ability), wallOn: sim.lightwalls ? P.wallT : 0, wallLay: WALL_LAY, wallMax: sim.lightwalls ? WALL_COOLDOWN : 0, takedowns: this.kills, place: P.place, field: active, active, solo, time: sim.time, best: sim.stats.bestLap, par: this.format === 'timetrial' ? sim.parTime : 0, score: 0, format: FORMAT_LABEL[this.format], storm: this.storm,
       lapLabel: T.closed ? `LAP ${clamp(P.lap + 1, 1, laps)}/${laps}` : `${Math.round((P.idx / T.n) * 100)}%`, radar: this.radarFn ??= () => { const sim = this.sim, T = sim.track; return { kind: 'track', pts: this.radarPts, closed: T.closed, extent: this.ext.r, cx: this.ext.cx, cz: this.ext.cz, hazards: sim.hazards, walls: sim.walls.length ? sim.walls.filter((_, i) => i % 2 === 0).map((w) => ({ x0: w.x0, z0: w.z0, x1: w.x1, z1: w.z1, color: css(this.colors[w.owner - 1]) })) : null, racers: sim.racers.map((r, i) => ({ x: r.x, z: r.z, h: r.h, color: css(this.colors[i]), player: r.isPlayer, out: r.out || r.downT > 0 })) }; } };
     if (this.format === 'gauntlet') data.integrity = P.integrity; if (this.format === 'elimination' && this.phase === 'play') data.elim = sim.elimT; if (this.format === 'pursuit' && !tgt.out) data.gap = Math.max(0, Math.round((tgt.progress - P.progress) * T.step));
-    hud.update(data); this.applyKillCam(dt);
+    hud.update(data); this.viewDiscs(dt, t); this.applyKillCam(dt);
   }
   private radarFn: (() => any) | null = null; private ambient!: Ambient;
-  dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
+  // ---------------------------------------------------------------- race discs (view)
+  private discPool: { g: THREE.Group; rim: THREE.MeshBasicMaterial; id: number }[] = []; private handDisc: THREE.Group | null = null; private discReadyShown = true; private discTip = 0;
+  /** A thrown disc: a dark core in a lit rim, in the thrower's colour (rivals' always red, so a threat reads at once). */
+  private makeDisc(color: number) {
+    const g = new THREE.Group(), rim = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.6) });
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 24), new THREE.MeshBasicMaterial({ color: 0x05070a })), ring = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 32), rim); ring.rotation.x = Math.PI / 2; g.add(core, ring);
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); glow.rotation.x = -Math.PI / 2; g.add(glow);
+    g.scale.setScalar(1.25); return { g, rim };
+  }
+  private viewDiscs(dt: number, t: number) {
+    const sim = this.sim; if (!sim.discsOn) return;
+    for (const d of sim.flying) {
+      let v = this.discPool.find((p) => p.id === d.id);
+      if (!v) { v = this.discPool.find((p) => p.id === 0) ?? (() => { const m = this.makeDisc(0xffffff); this.world.add(m.g); const e = { ...m, id: 0 }; this.discPool.push(e); return e; })(); v.id = d.id; v.rim.color.setHex(d.owner === sim.player.id ? this.colors[d.owner - 1] : 0xff2a14).multiplyScalar(1.6); }
+      v.g.visible = true; v.g.position.set(d.x, d.y, d.z); v.g.rotation.set(0.18 * Math.sin(t * 3 + d.id), t * 22, 0);
+      if (Math.random() < 0.5) this.ctx.vfx.sparks(d.x, d.y, d.z, d.owner === sim.player.id ? this.colors[d.owner - 1] : 0xff2a14, 1, 2, 0.25, undefined, 0, 0.35);
+    }
+    for (const v of this.discPool) if (v.id && !sim.flying.some((d) => d.id === v.id)) { v.id = 0; v.g.visible = false; }
+    // in a headset the disc is in the hand from the moment it is taken off the back until it is thrown
+    const xr = this.ctx.xr; if (this.xr && xr.discHeld) { if (!this.handDisc) { this.handDisc = this.makeDisc(this.colors[sim.racers.indexOf(sim.player)]).g; this.handDisc.scale.setScalar(0.85); } const anchor = xr.handAnchor(xr.dominant); if (this.handDisc.parent !== anchor) anchor.add(this.handDisc); this.handDisc.visible = true; this.handDisc.rotation.y += dt * 4; }
+    else if (this.handDisc) this.handDisc.visible = false;
+    const P = sim.player; if (P.discCd <= 0 && !this.discReadyShown && this.phase === 'play') { this.discReadyShown = true; this.ctx.hud.toast('DISC READY', 'good'); } if (P.discCd > 0) this.discReadyShown = false;
+  }
+  dispose() { this.ctx.xr.discGesture = false; this.handDisc?.removeFromParent(); const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
 }

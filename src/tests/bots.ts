@@ -50,6 +50,12 @@ export function runCombatBot(sim: CombatSim, maxSeconds: number, skill = 0.95) {
 
 export function runRaceBot(sim: RaceSim, maxSeconds: number, skill = 1) {
   const P = sim.player; const steps = Math.round(maxSeconds / DT);
-  for (let i = 0; i < steps && sim.state === 'active'; i++) { const s = P.skill; P.skill = skill; sim.drive(P, DT); P.skill = s; sim.step(DT, P.intent); sim.events.length = 0; }
+  for (let i = 0; i < steps && sim.state === 'active'; i++) {
+    const s = P.skill; P.skill = skill; sim.drive(P, DT); P.skill = s;
+    // disc tiers: a player throws whenever a disc is ready (the scripted line is not taught to dodge: a hard swerve at
+    // sprint speed costs more than the occasional stall, which is a fair test that a stall never decides a race alone)
+    if (sim.discsOn) P.intent.disc = true;
+    sim.step(DT, P.intent); sim.events.length = 0;
+  }
   return sim.state;
 }

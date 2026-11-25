@@ -18,7 +18,14 @@ export const VEHICLES: Record<string, VehicleStats & { label: string; blurb: str
   agile: { label: 'Agile', blurb: 'Corners best on the grid, slowest down a straight', top: 57.5, accel: 27, handling: 1.2 },
   flynn: { label: "Flynn's", blurb: 'Big top end, heavy steering and a slow build', top: 64.5, accel: 23.5, handling: 0.88 },
 };
-export interface RaceIntent { steer: number; accel: number; brake: number; boost: boolean; ability: boolean; /** rivals only: fire a stun pulse */ pulse?: boolean }
+export interface RaceIntent { steer: number; accel: number; brake: number; boost: boolean; ability: boolean; /** rivals only: fire a stun pulse */ pulse?: boolean; /** disc tiers: hurl a disc at the rider ahead */ disc?: boolean }
+/**
+ * A disc thrown from the saddle ('discs' tiers). It flies in track space - `p` along the road in sample units, `d`
+ * across it in metres - so it follows the road through bends and over crests, homing gently on its target's lane.
+ * A hit stalls the rider it strikes. The homing rate is below what a rider can steer, so a disc is always dodgeable.
+ */
+export interface RaceDisc { id: number; owner: number; target: number; p: number; d: number; v: number; life: number; x: number; y: number; z: number }
+export const DISC_COOLDOWN = 4, DISC_RANGE = 70;
 export interface RaceRival { skill: number; model: string }
 export interface RaceConfig {
   track: Track; seed: number; laps: number; format: RaceFormat; rivals: readonly RaceRival[]; modifiers: readonly string[];
@@ -32,6 +39,7 @@ export interface Racer {
   finished: boolean; finishT: number; out: boolean; integrity: number; slow: boolean; draft: boolean; intent: RaceIntent;
   /** Light-wall events: seconds of wall still to lay, cooldown, and where the last piece ended. */ wallT: number; wallCd: number; wx: number; wz: number;
   /** Ramming: time left as a shoved rider, and the sideways shove still carrying it. */ shoveT: number; shx: number; shz: number; /** grace after being walled or rammed, so a rider is never chain-stalled */ graceT: number;
+  /** Disc tiers: seconds until this rider can throw again. */ discCd: number;
   /** Taken down (derezzed on a wall or thrown off the road): seconds until this rider re-forms on the track. */ downT: number; /** Catch-up pacing: above 1 while a rival trails the player, a touch below while it leads. */ pace: number;
 }
 /** One piece of light wall laid behind a racer. It destroys rivals that ride into it and stuns the player. */
@@ -58,6 +66,8 @@ export class RaceSim {
   readonly cfg: RaceConfig; readonly rng: Rng; readonly track: Track;
   /** True in light-wall events: the ability lays a wall instead of firing a pulse. */ readonly lightwalls: boolean; walls: WallSeg[] = [];
   /** True where a rider at super speed can shove another off line; shoved into a rail or a wall, a rival is destroyed. */ readonly ramming: boolean;
+  /** Disc tiers: discs in flight. */ flying: RaceDisc[] = []; readonly discsOn: boolean; private discId = 1;
+  /** Rivals share one throw timer, so the field takes turns: a disc at the player at most every 5 s (shorter on harder settings). */ private rivalDiscT = 8;
   racers: Racer[] = []; hazards: Hazard[] = []; pads: Pad[] = []; gates: ChargeGate[] = []; slows: SlowZone[] = []; events: SimEvent[] = [];
   /** Present on tiers with the 'interceptor' modifier. */ jet: Interceptor | null = null;
   time = 0; state: 'active' | 'won' | 'lost' = 'active'; checkpoints: number[] = []; parTime: number;
@@ -70,6 +80,7 @@ export class RaceSim {
     const hasJet = cfg.modifiers.includes('interceptor');
     // the interceptor drops light walls, so wall simulation is on for its events even where no rider carries one.
     // 'no-walls' turns them off for events that are meant to be a clean speed contest.
+    this.discsOn = cfg.modifiers.includes('discs');
     this.lightwalls = hasJet || (cfg.rivals.length > 0 && cfg.format !== 'timetrial' && cfg.format !== 'gauntlet' && !cfg.modifiers.includes('no-walls'));
     this.ramming = this.lightwalls && cfg.rivals.length > 0 && cfg.modifiers.includes('ramming');
     if (hasJet) this.jet = { idx: 0, d: 0, y: 0, x: 0, z: 0, target: 0, cd: 7, runT: 0, lead: 95 };
@@ -86,7 +97,7 @@ export class RaceSim {
       const veh = r ? { top: base.top * (0.88 + 0.12 * sk) * (cfg.format === 'pursuit' ? 0.95 : 1), accel: base.accel * (0.9 + 0.1 * sk), handling: base.handling } : base;
       const h = Math.atan2(t.tx[idx], t.tz[idx]);
       const lapOff = t.closed && idx > t.n / 2 && !(cfg.format === 'pursuit' && !isPlayer) ? -1 : 0;
-      this.racers.push({ id: i + 1, isPlayer, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: 3, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
+      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: 3, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
     }
     this.player = this.racers[n - 1];
     const C = t.closed ? 4 : 5; for (let i = 1; i <= C; i++) this.checkpoints.push(Math.min(t.n - 2, Math.round((i * t.n) / (t.closed ? C : C + 0.02)) % (t.closed ? t.n : 1e9)));
@@ -121,6 +132,7 @@ export class RaceSim {
     for (const g of this.gates) g.flash = Math.max(0, g.flash - dt);
     for (const r of this.racers) { if (r.out) continue; if (r.downT > 0) { this.reform(r, dt); continue; } if (!r.isPlayer) this.drive(r, dt); this.stepRacer(r, r.isPlayer ? intent : r.intent, dt); }
     if (this.jet) this.stepJet(dt);
+    if (this.discsOn) this.stepDiscs(dt);
     // rider contact
     for (let i = 0; i < this.racers.length; i++) for (let j = i + 1; j < this.racers.length; j++) {
       const a = this.racers[i], b = this.racers[j]; if (a.out || b.out || a.downT > 0 || b.downT > 0) continue;
@@ -249,6 +261,44 @@ export class RaceSim {
     if (this.lightwalls) this.stepWall(r, dt);
     if (r.isPlayer ? it.ability : r.intent.ability) { if (this.lightwalls) this.layWall(r); else this.pulse(r); }
     if (!r.isPlayer && r.intent.pulse) this.pulse(r);
+    if (this.discsOn) { r.discCd = Math.max(0, r.discCd - dt); if (r.isPlayer ? it.disc : r.intent.disc) this.throwDisc(r); }
+  }
+
+  // ---------------------------------------------------------------- discs from the saddle
+  /** The rider a disc from `r` goes for: the nearest one ahead within range (rivals only ever aim at the player). */
+  private discTarget(r: Racer): Racer | null {
+    const t = this.track; let best: Racer | null = null, bd = DISC_RANGE;
+    for (const o of this.racers) { if (o === r || o.out || o.downT > 0 || (!r.isPlayer && !o.isPlayer)) continue; const ahead = (o.progress - r.progress) * t.step; if (ahead > 2 && ahead < bd) { bd = ahead; best = o; } }
+    return best;
+  }
+  throwDisc(r: Racer) {
+    if (r.discCd > 0 || r.finished || r.stun > 0.3 || r.downT > 0) return; const tg = this.discTarget(r); if (!r.isPlayer && !tg) return;
+    if (!r.isPlayer) { if (this.rivalDiscT > 0 || this.flying.some((d) => d.target === this.player.id)) return; this.rivalDiscT = 5 / Math.max(0.7, this.cfg.hazardMul); }
+    r.discCd = r.isPlayer ? DISC_COOLDOWN : 7 + 4 * (1 - r.skill);
+    const d: RaceDisc = { id: this.discId++, owner: r.id, target: tg?.id ?? 0, p: r.progress + 1.6 / this.track.step, d: r.d, v: Math.max(r.speed, 20) + 42, life: 2.4, x: r.x, y: r.y + 1, z: r.z };
+    this.flying.push(d); this.events.push({ type: 'discThrow', id: r.id, disc: d.id, target: d.target, player: r.isPlayer, atPlayer: d.target === this.player.id, x: r.x, y: r.y + 1, z: r.z });
+  }
+  private stepDiscs(dt: number) {
+    const t = this.track, hw = t.width / 2 - 0.4; this.rivalDiscT = Math.max(0, this.rivalDiscT - dt);
+    for (const d of this.flying) {
+      d.life -= dt; d.p += (d.v * dt) / t.step; const tg = d.target ? this.racers[d.target - 1] : null;
+      // homing across the road only (3.5 m/s at the player, 6 m/s for the player's discs): a disc steers to a lane, never round a rider
+      if (tg && !tg.out && tg.downT <= 0) { const rate = tg.isPlayer ? 3.5 : 6; d.d += Math.max(-rate * dt, Math.min(rate * dt, tg.d - d.d)); }
+      if (Math.abs(d.d) > hw) d.d = Math.sign(d.d) * hw;
+      const i = wrapIdx(t, Math.floor(d.p)); d.x = t.x[i] - t.tz[i] * d.d; d.y = t.y[i] + t.bank[i] * d.d + 1; d.z = t.z[i] + t.tx[i] * d.d;
+      if (!t.closed && d.p >= t.n - 1) d.life = 0;
+      for (const o of this.racers) {
+        if (o.id === d.owner || o.out || o.downT > 0 || o.finished) continue;
+        if (Math.abs((o.progress - d.p) * t.step) < 1.5 && Math.abs(o.d - d.d) < 1.05) {
+          // a stall: shorter for the player on easier settings, so a hit costs a beat rather than the race
+          d.life = 0; o.stun = Math.max(o.stun, o.isPlayer ? Math.min(1.2, 0.85 * this.cfg.hazardMul) : 1.1); o.vx *= 0.55; o.vz *= 0.55; o.drifting = false; o.boosting = false;
+          if (d.owner === this.player.id) this.stats.discHits = (this.stats.discHits ?? 0) + 1;
+          this.events.push({ type: 'discHit', id: o.id, by: d.owner, disc: d.id, player: o.isPlayer, x: o.x, y: o.y + 0.9, z: o.z }); break;
+        }
+      }
+      if (d.life <= 0 && !this.events.some((e: any) => e.disc === d.id && e.type === 'discHit')) this.events.push({ type: 'discSpent', disc: d.id, x: d.x, y: d.y, z: d.z });
+    }
+    if (this.flying.some((d) => d.life <= 0)) this.flying = this.flying.filter((d) => d.life > 0);
   }
 
   private layWall(r: Racer) {
@@ -432,6 +482,7 @@ export class RaceSim {
       it.pulse = it.ability; it.ability = false;
       if (r.wallCd <= 0 && this.time > 7) for (const o of this.racers) { if (o === r || o.out || o.downT > 0) continue; const back = (r.progress - o.progress) * t.step; if (back > 4 && back < 18 && Math.abs(o.d - r.d) < 3 && this.time > this.rivalWallAt && this.rng.chance(dt * (0.14 + 0.45 * sk) * (this.cfg.modifiers.includes('aggressive') ? 0.5 : 1))) { it.ability = true; this.rivalWallAt = this.time + clamp(6 - this.cfg.aiSkill * 14, 3, 10); break; } }
     }
+    if (this.discsOn && r.discCd <= 0 && this.time > 6) { const ahead = (this.player.progress - r.progress) * t.step; it.disc = ahead > 6 && ahead < 45 && this.player.downT <= 0; } else it.disc = false;
     void dt;
   }
 }

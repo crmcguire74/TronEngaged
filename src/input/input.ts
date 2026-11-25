@@ -6,12 +6,13 @@ export interface Actions {
   throwHeld: boolean; shieldHeld: boolean; boost: boolean;
   steer: number; accel: number; brake: number;
   jump: boolean; dodge: boolean; recall: boolean; pause: boolean; ability: boolean; camera: boolean; confirm: boolean; back: boolean;
+  /** Racing, disc tiers: hurl a disc at the rider ahead. */ disc: boolean;
   turnLeft: boolean; turnRight: boolean; navX: number; navY: number;
   device: 'kbm' | 'pad' | 'xr';
 }
-export const blankActions = (): Actions => ({ moveX: 0, moveY: 0, lookX: 0, lookY: 0, throwHeld: false, shieldHeld: false, boost: false, steer: 0, accel: 0, brake: 0, jump: false, dodge: false, recall: false, pause: false, ability: false, camera: false, confirm: false, back: false, turnLeft: false, turnRight: false, navX: 0, navY: 0, device: 'kbm' });
+export const blankActions = (): Actions => ({ moveX: 0, moveY: 0, lookX: 0, lookY: 0, throwHeld: false, shieldHeld: false, boost: false, steer: 0, accel: 0, brake: 0, jump: false, dodge: false, recall: false, pause: false, ability: false, disc: false, camera: false, confirm: false, back: false, turnLeft: false, turnRight: false, navX: 0, navY: 0, device: 'kbm' });
 
-export const ACTION_LABELS: Record<string, string> = { moveUp: 'Forward / Accelerate', moveDown: 'Back / Brake', moveLeft: 'Left / Steer left', moveRight: 'Right / Steer right', jump: 'Jump / Platform hop', dodge: 'Dodge', recall: 'Recall discs', boost: 'Boost', ability: 'Special ability', camera: 'Change camera', pause: 'Pause' };
+export const ACTION_LABELS: Record<string, string> = { moveUp: 'Forward / Accelerate', moveDown: 'Back / Brake', moveLeft: 'Left / Steer left', moveRight: 'Right / Steer right', jump: 'Jump / Platform hop', dodge: 'Dodge', recall: 'Recall discs', boost: 'Boost', ability: 'Special ability', disc: 'Throw disc (racing)', camera: 'Change camera', pause: 'Pause' };
 export function keyLabel(code: string) { return code.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'L-Shift').replace('ShiftRight', 'R-Shift').replace('ControlLeft', 'L-Ctrl').replace('Arrow', '↑↓←→'.includes(code) ? '' : 'Arrow ').replace('Space', 'Space'); }
 
 export class Input {
@@ -57,7 +58,7 @@ export class Input {
     const sens = 0.0022 * s.sensitivity; a.lookX = this.mouseDX * sens; a.lookY = this.mouseDY * sens * (s.invertY ? -1 : 1); this.mouseDX = this.mouseDY = 0;
     a.throwHeld = this.locked && (this.buttons & 1) !== 0; a.shieldHeld = (this.locked && (this.buttons & 4) !== 0) || k.has('KeyF');
     a.boost = this.b('boost');
-    a.jump = this.p('jump'); a.dodge = this.p('dodge'); a.recall = this.p('recall'); a.pause = this.p('pause') || pr.has('KeyP'); a.ability = this.p('ability'); a.camera = this.p('camera');
+    a.jump = this.p('jump'); a.dodge = this.p('dodge'); a.recall = this.p('recall'); a.pause = this.p('pause') || pr.has('KeyP'); a.ability = this.p('ability'); a.disc = this.p('disc'); a.camera = this.p('camera');
     a.confirm = pr.has('Enter') || pr.has('Space'); a.back = pr.has('Escape') || pr.has('Backspace');
     a.turnLeft = pr.has(s.bindings.moveLeft) || pr.has('ArrowLeft'); a.turnRight = pr.has(s.bindings.moveRight) || pr.has('ArrowRight');
     a.navX = (pr.has('ArrowRight') || pr.has('KeyD') ? 1 : 0) - (pr.has('ArrowLeft') || pr.has('KeyA') ? 1 : 0); a.navY = (pr.has('ArrowDown') || pr.has('KeyS') ? 1 : 0) - (pr.has('ArrowUp') || pr.has('KeyW') ? 1 : 0);
@@ -75,7 +76,7 @@ export class Input {
         a.device = 'pad'; a.moveX = lx; a.moveY = -ly; a.steer = lx; a.accel = val(7); a.brake = val(6);
         a.lookX = rx * 2.6 * s.padSensitivity * dt; a.lookY = ry * 1.8 * s.padSensitivity * dt * (s.invertY ? -1 : 1);
         a.throwHeld = val(7) > 0.4; a.shieldHeld = val(6) > 0.4; a.boost = bt(0);
-        a.jump = edge(0); a.dodge = edge(1); a.recall = edge(5); a.ability = edge(1); a.camera = edge(5); a.pause = edge(9); a.confirm = edge(0); a.back = edge(1);
+        a.jump = edge(0); a.dodge = edge(1); a.recall = edge(5); a.ability = edge(1); a.disc = edge(3); a.camera = edge(5); a.pause = edge(9); a.confirm = edge(0); a.back = edge(1);
         const dl = edge(14), dr = edge(15), fl = lx < -0.6 && this.padAxisPrev >= -0.6, fr = lx > 0.6 && this.padAxisPrev <= 0.6;
         a.turnLeft = dl || fl; a.turnRight = dr || fr; a.navX = (dr || fr ? 1 : 0) - (dl || fl ? 1 : 0);
         const yPrev = (this as any)._yPrev ?? 0; a.navY = (edge(13) || (ly > 0.6 && yPrev <= 0.6) ? 1 : 0) - (edge(12) || (ly < -0.6 && yPrev >= -0.6) ? 1 : 0); (this as any)._yPrev = ly;

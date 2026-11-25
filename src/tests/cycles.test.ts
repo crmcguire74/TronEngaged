@@ -74,3 +74,29 @@ describe('new tier mechanics', () => {
     expect(speedAt(0)).toBeGreaterThan(30); expect(speedAt(1)).toBeLessThan(25);
   });
 });
+
+describe('race discs', () => {
+  const discTier = () => RACE_TIERS.find((t) => t.modifiers.includes('discs') && t.params.format !== 'pursuit')!;
+  /** Puts rival 1 a set distance ahead of the player, in a chosen lane, and lets them both cruise. */
+  function setup(ahead: number, laneGap: number) {
+    const sim = new RaceSim(buildRaceConfig(discTier(), 'standard', 'azure')); const P = sim.player, R = sim.racers.find((r) => !r.isPlayer)!;
+    for (const r of sim.racers) if (r !== P && r !== R) r.out = true;
+    const t = sim.track, place = (r: typeof P, idx: number, d: number) => { r.idx = idx; r.d = d; r.lap = 0; r.progress = idx; r.x = t.x[idx] - t.tz[idx] * d; r.z = t.z[idx] + t.tx[idx] * d; r.speed = 30; };
+    place(P, 40, 0); place(R, 40 + Math.round(ahead / t.step), laneGap); sim.time = 10; return { sim, P, R };
+  }
+  it('a disc thrown by the player stalls the rider ahead in its lane', () => {
+    const { sim, P, R } = setup(25, 0.5); sim.throwDisc(P); expect(sim.flying).toHaveLength(1);
+    let hit: any = null; for (let i = 0; i < 2 / DT && !hit; i++) { R.progress = R.progress; sim.events.length = 0; (sim as any).stepDiscs(DT); hit = sim.events.find((e: any) => e.type === 'discHit'); }
+    expect(hit?.id).toBe(R.id); expect(R.stun).toBeGreaterThan(0.9); expect(sim.stats.discHits).toBe(1); expect(P.discCd).toBeGreaterThan(0);
+  });
+  it('misses a rider who is well out of its lane', () => {
+    const { sim, P, R } = setup(25, 6); sim.throwDisc(P); (sim as any).flying[0].target = 0; // a straight throw, no homing
+    for (let i = 0; i < 2 / DT; i++) { sim.events.length = 0; (sim as any).stepDiscs(DT); expect(sim.events.some((e: any) => e.type === 'discHit')).toBe(false); }
+    void R;
+  });
+  it('rivals take turns: one disc at the player at a time, at least five seconds apart', () => {
+    const { sim, P, R } = setup(-20, 0); void P; (sim as any).rivalDiscT = 0; R.discCd = 0; sim.throwDisc(R); expect(sim.flying).toHaveLength(1);
+    R.discCd = 0; sim.throwDisc(R); expect(sim.flying).toHaveLength(1);
+    sim.flying.length = 0; R.discCd = 0; sim.throwDisc(R); expect(sim.flying).toHaveLength(0); // the shared timer is still running
+  });
+});

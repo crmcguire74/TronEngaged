@@ -35,7 +35,7 @@ export function cycleFinalScore(s: CycleStats, won: boolean, tierMul: number, di
   return { total: Math.round(base * tierMul * diffMul), lines };
 }
 
-export interface RaceStats { place: number; field: number; time: number; parTime: number; overtakes: number; cleanSections: number; sections: number; scrapes: number; driftMeters: number; bestLap: number; takedowns?: number }
+export interface RaceStats { place: number; field: number; time: number; parTime: number; overtakes: number; cleanSections: number; sections: number; scrapes: number; driftMeters: number; bestLap: number; /** disc tiers: discs that struck a rival */ discHits?: number; takedowns?: number }
 export const RACE_PLACE_POINTS = [1000, 700, 500, 350, 250, 180, 120, 80];
 export function raceFinalScore(s: RaceStats, passed: boolean, tierMul: number, diffMul: number): { total: number; lines: [string, number][] } {
   const lines: [string, number][] = [

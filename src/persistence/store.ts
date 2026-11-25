@@ -20,7 +20,7 @@ export interface SaveData {
 }
 export const DEFAULT_BINDINGS: Record<string, string> = {
   moveUp: 'KeyW', moveDown: 'KeyS', moveLeft: 'KeyA', moveRight: 'KeyD', jump: 'Space', dodge: 'ShiftLeft', recall: 'KeyR',
-  boost: 'ShiftLeft', ability: 'KeyE', camera: 'KeyC', pause: 'Escape',
+  boost: 'ShiftLeft', ability: 'KeyE', disc: 'KeyQ', camera: 'KeyC', pause: 'Escape',
 };
 export function defaultSettings(): Settings {
   return {

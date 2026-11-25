@@ -24,6 +24,11 @@ export class XRManager {
   /** Right stick up/down, for trimming the seat height on a cycle (+1 = raise). */ dashAdjust = 0;
   /** Tracked glove models. Hidden while the player's hands are shown on a vehicle's controls instead. */
   showHands = true; private gloves: Record<'left' | 'right', GloveHand> | null = null;
+  /**
+   * Racing disc grab: the throwing hand reaches back over the shoulder and closes (grip or trigger) to take a disc off
+   * the back; opening the hand hurls it. `discHeld` is true while a disc is in the hand.
+   */
+  discHeld = false; /** set by a disc-race session; off everywhere else */ discGesture = false; private discArmed = false; private hv = new THREE.Vector3();
   /** Raw stick readings after calibration, for the in-headset input readout. */
   readonly sticks = { lx: 0, ly: 0, rx: 0, ry: 0 };
 
@@ -88,7 +93,7 @@ export class XRManager {
     for (const s of side === 'both' ? (['left', 'right'] as const) : [side]) { const gp: any = this.hands[s].gamepad; try { gp?.hapticActuators?.[0]?.pulse?.(Math.min(1, intensity), ms); gp?.vibrationActuator?.playEffect?.('dual-rumble', { duration: ms, strongMagnitude: intensity, weakMagnitude: intensity }); } catch { /* no haptics */ } }
   }
   /** Clears latched button edges (used when a state change skips a controller update for a frame). */
-  clearEdges() { const a = this.actions as any; for (const k of ['pause', 'confirm', 'back', 'jump', 'dodge', 'recall', 'ability', 'turnLeft', 'turnRight', 'camera']) a[k] = false; this.uiTriggerEdge = false; this.menuEdge = false; }
+  clearEdges() { const a = this.actions as any; for (const k of ['pause', 'confirm', 'back', 'jump', 'dodge', 'recall', 'ability', 'disc', 'turnLeft', 'turnRight', 'camera']) a[k] = false; this.uiTriggerEdge = false; this.menuEdge = false; }
   /** Button and stick names as the player holds them, for on-screen instructions. */
   get labels() {
     const l = !!this.settings?.vr.leftHanded;
@@ -144,6 +149,12 @@ export class XRManager {
     // the stick. The menu needs a deliberate hold so a brushed button never interrupts a run.
     a.boost = btn(P, 4); a.ability = edge(S, 4); a.jump = edge(P, 4) || edge(S, 4) || (ry < -0.7 && this.stickPrev.ry >= -0.7); a.dodge = edge(P, 5) || (ry > 0.7 && this.stickPrev.ry <= 0.7); a.recall = edge(dom, 0) || edge(dom, 1);
     a.camera = edge(P, 5);
+    // over-the-shoulder disc grab, measured in the head's own frame (+Z is behind the head, +Y up)
+    { const closed = val(dom, 1) > 0.6 || val(dom, 0) > 0.6, rig = this.engine.rig; dom.grip.getWorldPosition(this.hv); const head = this.headWorld(this.tmp);
+      const local = this.hv.sub(head).applyQuaternion(this.headQuat(this.q).invert()), behind = local.z > 0.02 && local.y > -0.22 && Math.abs(local.x) < 0.45;
+      a.disc = false; if (!this.discGesture) this.discHeld = false; else if (!this.discHeld && closed && behind && !this.discArmed) { this.discHeld = true; this.pulse(this.dominant, 0.6, 60); }
+      else if (this.discHeld && !closed) { this.discHeld = false; a.disc = true; this.pulse(this.dominant, 0.9, 90); }
+      this.discArmed = closed; void rig; }
     const hold = btn(S, 5); this.menuHeld = hold ? this.menuHeld + dt : 0; this.menuEdge = hold && this.menuHeld >= MENU_HOLD && this.menuHeld - dt < MENU_HOLD; a.pause = this.menuEdge; this.menuProgress = hold ? Math.min(1, this.menuHeld / MENU_HOLD) : 0;
     // 90° turns: flick either stick
     const G = 0.55, p = this.stickPrev;
