@@ -14,6 +14,7 @@ export interface AmbientOpts { cx: number; cz: number; groundY: number; rMin: nu
 
 export class Ambient {
   readonly group = new THREE.Group(); private mats: THREE.ShaderMaterial[] = []; private beat = 0;
+  /** The current pulse (0..1), for other set pieces that breathe with the scene. */ get beatLevel() { return this.beat; }
 
   constructor(th: Theme, o: AmbientOpts) {
     const rng = new Rng(o.seed ^ 0x5bd1e995), low = o.quality === 'low';

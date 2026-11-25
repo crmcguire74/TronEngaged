@@ -12,7 +12,7 @@ export const ASSET_PATHS: Record<string, string> = {
   'cycle:agile': 'vehicles/enemies/cycle-agile.glb', 'cycle:flynn': 'vehicles/player/cycle-flynn.glb',
   cockpit: 'vehicles/player/cockpit.glb', cockpit2: 'vehicles/player/cockpit-v2.glb', cockpit3: 'vehicles/player/cockpit-v3.glb', cockpit4: 'vehicles/player/cockpit-v4.glb', cockpit5: 'vehicles/player/cockpit-v5.glb', console: 'vehicles/player/cockpit-console.glb', stand: 'environments/cycle-arenas/stand.glb', pylon: 'environments/cycle-arenas/pylon.glb', arena: 'environments/cycle-arenas/lightcycle-arena.glb', craft: 'vehicles/air/patrol-craft.glb', drone: 'vehicles/air/drone.glb', carrier: 'vehicles/air/carrier.glb', hauler: 'vehicles/air/hauler.glb', recognizer: 'vehicles/air/recognizer.glb', jet: 'vehicles/air/light-jet.glb',
   'disc:azure': 'weapons/discs/disc-azure.glb', 'disc:ivory': 'weapons/discs/disc-ivory.glb', 'disc:crimson': 'weapons/discs/disc-crimson.glb', 'disc:identity': 'weapons/discs/disc-identity.glb', sword: 'weapons/melee/arc-sword.glb',
-  hands: 'characters/player/glove-hands.glb', pedestal: 'environments/disc-arenas/pedestal.glb', coliseum: 'environments/disc-arenas/coliseum.glb', city: 'environments/cycle-arenas/city.glb',
+  hands: 'characters/player/glove-hands.glb', pedestal: 'environments/disc-arenas/pedestal.glb', coliseum: 'environments/disc-arenas/coliseum.glb', frame: 'environments/disc-arenas/arena-frame.glb', city: 'environments/cycle-arenas/city.glb',
 };
 /** Low-detail copies built by scripts/build-lods.mjs (geometry only: they borrow the full model's materials). */
 for (const m of ['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet']) ASSET_PATHS['lod:' + m] = ASSET_PATHS['cycle:' + m].replace(/\.glb$/, '.lod.glb');

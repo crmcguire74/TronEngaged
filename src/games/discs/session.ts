@@ -6,6 +6,7 @@ import { CITY_PANO, PANORAMA, lodChar, tuneEmissive } from '../../engine/assets'
 import { Crowd, gridFloor, hardlight, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { Ribbon } from '../../engine/vfx';
 import { Ambient } from '../../engine/ambient';
+import { ArenaFrames } from './setpieces';
 import { Drones } from '../../engine/patrol';
 import { angleLerp, clamp, damp, lerp, smooth } from '../../engine/math';
 import { buildDiscConfig } from '../../progression/build';
@@ -115,7 +116,7 @@ export class DiscSession extends BaseSession {
   private v = new THREE.Vector3(); private v2 = new THREE.Vector3(); private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3();
   private hopFade = false; private offset = new THREE.Vector3(); private recentred = false; private vrDisc: THREE.Object3D | null = null; private introDone = false; private bossName = ''; private totalEnemies: number; private interfere = false; private lastHp: number; private early: boolean; private threw = false; private shielded = false; private drawT = 9; private called = false; private eye = new THREE.Vector3(); private arrows: THREE.Mesh[] = []; private slowT = 0; private slowDur = 1; private slowMin = 1; private tickAt = 0;
 
-  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'lodchar:ivory', 'lodchar:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'disc:identity', 'sword', 'pedestal', 'coliseum', 'drone']; }
+  static assets(tier: TierDefinition, skin: string): string[] { return ['char:' + skin, 'char:ivory', 'char:crimson', 'lodchar:ivory', 'lodchar:crimson', 'disc:azure', 'disc:ivory', 'disc:crimson', 'disc:identity', 'sword', 'pedestal', 'coliseum', 'frame', 'drone']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, seedSalt = 0) {
     super(ctx, tier, diff);
@@ -166,6 +167,7 @@ export class DiscSession extends BaseSession {
     for (const f of this.sim.fighters) this.addFighter(f);
     // VR: the held disc sits in the tracked throwing hand
     this.vrDisc = ctx.assets.instance('disc:azure').root; this.vrDisc.visible = false; this.vrDisc.userData.shared = true;
+    this.frames = new ArenaFrames(ctx.assets.has('frame') ? ctx.assets.instance('frame').root : null, tier.environment, th, A.floor, tier.id * 13, ctx.xr.presenting); W.add(this.frames.group);
     this.ambient = new Ambient(th, { cx: 0, cz: 0, groundY: A.floor, rMin: 55, rMax: 150, hMin: 25, hMax: 70, seed: tier.id * 37, xr: ctx.xr.presenting, quality: ctx.settings.quality }); W.add(this.ambient.group);
     W.add(ctx.vfx.group); ctx.vfx.clear();
     eng.setWorld(W);
@@ -222,7 +224,7 @@ export class DiscSession extends BaseSession {
     for (const id of f.discIds) this.addDisc(id, f);
   }
   // ---------------------------------------------------------------- core breach and power nodes
-  private seenNode = false; private beams: BeamView | null = null; private seenCut = false; private locked = new Set<number>(); private ambient!: Ambient;
+  private seenNode = false; private frames!: ArenaFrames; private beams: BeamView | null = null; private seenCut = false; private locked = new Set<number>(); private ambient!: Ambient;
   private coreV: { root: THREE.Group; shell: THREE.Group; core: THREE.Mesh; coreMat: THREE.MeshBasicMaterial; halo: THREE.Mesh; pips: THREE.MeshBasicMaterial[] } | null = null;
   private nodeV = new Map<number, { g: THREE.Group; kind: string }>();
   /**
@@ -489,7 +491,7 @@ export class DiscSession extends BaseSession {
   protected view(dt: number, alpha: number, a: Actions) {
     this.animateObjectives(dt, a); this.beams?.update(this.sim.discs, this.sim.time);
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, t = engine.elapsed, cam = engine.camera;
-    this.ambient.update(t, this.phase === 'play' ? clamp(0.35 + this.sim.activeAttackers() * 0.2 + (this.sim.rally - 1), 0, 1) : 0.2);
+    this.ambient.update(t, this.phase === 'play' ? clamp(0.35 + this.sim.activeAttackers() * 0.2 + (this.sim.rally - 1), 0, 1) : 0.2); this.frames.update(t, this.ambient.beatLevel);
     for (const m of this.timed) { m.uniforms.uTime.value = t; if (m.uniforms.uFlash) m.uniforms.uFlash.value *= Math.exp(-6 * dt); }
     if (this.slowT > 0) { this.slowT -= dt; const k = clamp(1 - this.slowT / this.slowDur, 0, 1); this.timeScale = this.slowT <= 0 ? 1 : lerp(this.slowMin, 1, smooth(clamp((k - 0.45) / 0.55, 0, 1))); if (this.slowT <= 0) this.slowMin = 1; }
     this.crowd.update(dt, t); this.drones.orbit(dt, 0, 4, 0, sim.cfg.arena.radius + 3.5, this.look.set(P.x, P.y + 1.2, P.z)); vfx.update(dt); if (!this.xr && this.vrDisc) this.vrDisc.visible = false;
