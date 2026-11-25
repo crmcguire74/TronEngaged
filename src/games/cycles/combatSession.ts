@@ -11,7 +11,7 @@ import { buildCombatConfig, combatRivalModels } from '../../progression/build';
 import { cycleFinalScore } from '../../progression/scoring';
 import { DIFFICULTIES, type DifficultyId, type TierDefinition } from '../../progression/types';
 import { CombatSim, DIRS, type Cycle, type CycleIntent } from './combat';
-import { StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, WallTrail, css, cycleAssets, playerTrail } from './view';
+import { CYCLE_INTRO, introCamera, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, WallTrail, css, cycleAssets, playerTrail } from './view';
 
 const yawOf = (dir: number) => Math.atan2(DIRS[dir][0], DIRS[dir][1]);
 const TAUNTS = ['Too slow.', 'Flatlined.', 'Loser.', 'Boxed in.', 'Recompile and return.'];
@@ -28,7 +28,7 @@ export class CombatSession extends BaseSession {
   static assets(tier: TierDefinition, cycle: string): string[] { return [...cycleAssets([cycle, ...combatRivalModels(tier)], 'azure'), 'stand', 'pylon', 'craft', 'drone', 'recognizer', 'arena']; }
 
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0) {
-    super(ctx, tier, diff);
+    super(ctx, tier, diff); this.introDur = CYCLE_INTRO;
     const sim = (this.sim = new CombatSim(buildCombatConfig(tier, diff, salt))); const th = (this.th = theme(tier.environment)), W = this.world, H = sim.half0, eng = ctx.engine;
     this.cockpit = ctx.settings.cycleCamera === 'cockpit'; this.vrFirst = ctx.settings.vr.cycleView !== 'chase'; this.early = !tier.endless && tier.id <= 5;
     eng.scene.fog = new THREE.FogExp2(th.fog, th.fogDensity * (ctx.xr.presenting ? 1.5 : 1));
@@ -129,11 +129,10 @@ export class CombatSession extends BaseSession {
   protected intro(k: number, dt: number) {
     const P = this.sim.player, cam = this.ctx.engine.camera, vfx = this.ctx.vfx;
     // vehicles assemble from particles, then their systems light up
-    this.sim.cycles.forEach((c, i) => { const t = clamp((k - 0.12 - i * 0.05) / 0.45, 0, 1); this.cv[i].reveal.value = -0.1 + t * 1.6; if (t >= 1) this.cv[i].reveal.value = 50; });
+    for (const v of this.cv) v.reveal.value = 50; void k; // the ignition build hides each machine until its rider lands
     this.start.update(this.t, dt, this.xr ? (this.ctx.xr.actions.accel ?? 0) : 0);
     if (this.xr) return;
-    const e = smooth(k), yaw = yawOf(P.dir), a = yaw + Math.PI + lerp(2.2, 0, e), r = lerp(22, this.cockpit ? 0.4 : 10, e), h = lerp(9, this.cockpit ? 1.3 : 4.6, e);
-    this.camPos.set(P.x + Math.sin(a) * r, h, P.z + Math.cos(a) * r); cam.position.copy(this.camPos); cam.lookAt(P.x + Math.sin(yaw) * 8 * e, 1 + 0.3 * e, P.z + Math.cos(yaw) * 8 * e);
+    introCamera(cam, this.t, P.x, 0, P.z, yawOf(P.dir), this.cockpit); this.camPos.copy(cam.position);
   }
   protected onCountdown() { this.start.finish(); for (const v of this.cv) { v.reveal.value = 50; v.seal(); } this.ctx.audio.engine(true); this.ctx.audio.sfx('spawn'); if (this.early) this.ctx.hud.coach('GOAL: OUTLAST EVERY RIVAL — YOUR CYCLE LEAVES A WALL, MAKE THEM HIT IT'); }
   protected onStart() { this.ctx.audio.intensity = 0.7; this.sim.cycles.forEach((c, i) => { this.cv[i].launch(); const [dx, dz] = DIRS[c.dir]; this.ctx.vfx.sparks(c.x - dx * 1.4, 0.4, c.z - dz * 1.4, this.colors[i], 26, 9, 0.5, { x: -dx, y: 0.3, z: -dz }); }); this.ctx.audio.sfx('boost'); }

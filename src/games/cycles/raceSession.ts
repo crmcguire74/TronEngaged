@@ -14,7 +14,7 @@ import { DIFFICULTIES, type DifficultyId, type TierDefinition } from '../../prog
 import { INTERCEPTOR_ID, RaceSim, WALL_COOLDOWN, WALL_LAY, type RaceIntent } from './race';
 import { inFeature, wrapIdx, type Track } from './track';
 import { buildScenery } from './scenery';
-import { StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, css, cycleAssets, playerTrail } from './view';
+import { CYCLE_INTRO, introCamera, StartSequence, CYCLE_COLORS, CycleView, EYE, SpeedLines, css, cycleAssets, playerTrail } from './view';
 
 const GATE = 0xffc23a;
 /** Barriers the interceptor drops belong to no rider, so they get their own warning colour. */
@@ -60,7 +60,7 @@ export class RaceSession extends BaseSession {
   constructor(ctx: Ctx, tier: TierDefinition, diff: DifficultyId, salt = 0, stage = 0) {
     super(ctx, tier, diff);
     const cfg = buildRaceConfig(tier, diff, ctx.settings.cycle, stage, tier.endless ? salt : 0), sim = (this.sim = new RaceSim(cfg)), t = cfg.track, th = (this.th = theme(tier.environment)), W = this.world, eng = ctx.engine, hw = t.width / 2;
-    this.format = cfg.format; this.cockpit = ctx.settings.cycleCamera === 'cockpit'; this.vrFirst = ctx.settings.vr.cycleView !== 'chase'; this.early = !tier.endless && tier.id <= 4;
+    this.introDur = CYCLE_INTRO; this.format = cfg.format; this.cockpit = ctx.settings.cycleCamera === 'cockpit'; this.vrFirst = ctx.settings.vr.cycleView !== 'chase'; this.early = !tier.endless && tier.id <= 4;
     this.fog = new THREE.FogExp2(th.fog, th.fogDensity); eng.scene.fog = this.fog;
     const sky = suppliedSky(th, ctx.assets, tier.environment) ?? skyDome(th, ctx.assets.texture(CITY_PANO.wire), 1500, { lo: -30, hi: 46, gain: ctx.xr.presenting ? 0.5 : 0.6, mix: 0.9, tint: 0.7 }); W.add(sky); this.timed.push(sky.material as THREE.ShaderMaterial); lights(W, th, false);
     let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9, minY = 1e9; for (let i = 0; i < t.n; i++) { minX = Math.min(minX, t.x[i]); maxX = Math.max(maxX, t.x[i]); minZ = Math.min(minZ, t.z[i]); maxZ = Math.max(maxZ, t.z[i]); minY = Math.min(minY, t.y[i]); if (i % 3 === 0) this.radarPts.push(t.x[i], t.z[i]); }
@@ -136,11 +136,11 @@ export class RaceSession extends BaseSession {
 
   protected intro(k: number, dt: number) {
     const P = this.sim.player, cam = this.ctx.engine.camera, vfx = this.ctx.vfx;
-    this.sim.racers.forEach((r, i) => { const t = clamp((k - 0.1 - i * 0.04) / 0.45, 0, 1); this.cv[i].reveal.value = r.y - 0.1 + t * 1.6; if (t >= 1) this.cv[i].reveal.value = 1e4; });
+    // machines are hidden by the ignition build until their rider lands, so the floor reveal is not used here
+    for (const v of this.cv) v.reveal.value = 1e4; void k;
     this.start.update(this.t, dt, this.xr ? (this.ctx.xr.actions.accel ?? 0) : 0);
     if (this.xr) return;
-    const e = smooth(k), a = P.h + Math.PI + lerp(2.4, 0, e), r = lerp(26, this.cockpit ? 0.4 : 9, e), h = lerp(11, this.cockpit ? 1.3 : 3.6, e);
-    this.camPos.set(P.x + Math.sin(a) * r, P.y + h, P.z + Math.cos(a) * r); cam.position.copy(this.camPos); cam.lookAt(P.x + Math.sin(P.h) * 10 * e, P.y + 1, P.z + Math.cos(P.h) * 10 * e);
+    introCamera(cam, this.t, P.x, P.y, P.z, P.h, this.cockpit); this.camPos.copy(cam.position);
   }
   protected onCountdown() { this.start.finish(); for (const v of this.cv) { v.reveal.value = 1e4; v.seal(); } this.ctx.audio.engine(true); this.ctx.audio.sfx('spawn'); }
   protected onStart() { this.ctx.audio.intensity = 0.8; for (const v of this.cv) v.launch(); this.ctx.audio.sfx('boost'); }

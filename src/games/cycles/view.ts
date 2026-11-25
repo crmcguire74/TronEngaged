@@ -63,12 +63,17 @@ const BLACK_GLASS = () => new THREE.MeshStandardMaterial({ name: 'Body', color: 
 const ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
 
 /** Shared uniforms for an ignition sweep: world-space origin and the radius the solid machine has reached. */
-export interface BuildUniforms { uBO: { value: THREE.Vector3 }; uBR: { value: number } }
+export interface BuildUniforms { uBO: { value: THREE.Vector3 }; uBR: { value: number }; uBW: { value: number } }
+/** Ignition timing: light guides draw for GUIDE_DUR, the build front sweeps the machine over BUILD_DUR. */
+const BUILD_DUR = 2.2, GUIDE_DUR = 0.55;
 /** Radius large enough that nothing is ever outside it: the machine is simply whole. */
 const BUILT = 1e4;
 /**
- * Ignition: the machine assembles outward from the rider's hands. Ahead of the front there is only a crawling 3D
- * lattice of light (grid lines on every surface); behind it the panels are solid, with a bright seam at the front.
+ * Ignition: the machine assembles outward from the rider's hands in three bands that travel together.
+ *   1. a thin hot leading edge, where light first touches each surface
+ *   2. behind it, 0.9 m of contour lattice: the surface drawn only as lines of light (world-space contours, anti-aliased
+ *      with screen derivatives so they stay one to two pixels wide at any distance, from a headset seat or 15 m off)
+ *   3. behind that, solid panels, with a seam of light that fades as the solid catches up
  * Chained onto whatever the material already does, and compiled into its shader once, so it costs nothing when idle.
  */
 export function buildMaterials(root: THREE.Object3D, u: BuildUniforms, color: number) {
@@ -79,12 +84,18 @@ export function buildMaterials(root: THREE.Object3D, u: BuildUniforms, color: nu
       if (!m || m.userData.build) continue; m.userData.build = true;
       const prev = m.onBeforeCompile, prevKey = prev && m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey ? m.customProgramCacheKey.bind(m) : null;
       m.onBeforeCompile = (sh: any, r: any) => {
-        prev?.call(m, sh, r); sh.uniforms.uBO = u.uBO; sh.uniforms.uBR = u.uBR; sh.uniforms.uBG = glow;
+        prev?.call(m, sh, r); sh.uniforms.uBO = u.uBO; sh.uniforms.uBR = u.uBR; sh.uniforms.uBW = u.uBW; sh.uniforms.uBG = glow;
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vBW;').replace('#include <project_vertex>', '#include <project_vertex>\nvBW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vBW; uniform vec3 uBO, uBG; uniform float uBR;').replace('#include <dithering_fragment>',
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vBW; uniform vec3 uBO, uBG; uniform float uBR, uBW;').replace('#include <dithering_fragment>',
           `float bd = distance(vBW, uBO) - uBR;
-          if (bd > 0.0) { if (bd > 0.45) discard; vec3 gl = abs(fract(vBW * 10.0) - 0.5); if (max(max(gl.x, gl.y), gl.z) < 0.43) discard; gl_FragColor = vec4(uBG * (2.6 - bd * 4.0), 1.0); }
-          else gl_FragColor.rgb += uBG * smoothstep(0.16, 0.0, -bd) * 3.0;
+          if (bd > 0.05) discard;
+          if (bd > 0.0) gl_FragColor = vec4(uBG * 3.2, 1.0);
+          else if (bd > -uBW) {
+            vec3 q = vBW * 7.0, dd = 0.5 - abs(fract(q) - 0.5), fw = max(fwidth(q), vec3(1e-4));
+            vec3 ln = 1.0 - smoothstep(fw * 0.6, fw * 1.7, dd); float l = max(max(ln.x, ln.y), ln.z);
+            if (l < 0.3) discard;
+            gl_FragColor = vec4(uBG * (2.6 - 1.4 * (-bd / uBW)) * l, 1.0);
+          } else gl_FragColor.rgb += uBG * smoothstep(0.4, 0.0, -bd - uBW) * 1.8;
           #include <dithering_fragment>`);
       };
       m.customProgramCacheKey = () => (prevKey ? prevKey() + '+' : '') + 'build'; m.needsUpdate = true;
@@ -108,7 +119,9 @@ export class CycleView {
   /** Distance LOD: a geometry-only low-detail copy sharing this machine's materials, and the rider dropped when far. */
   private lod: Instance | null = null; private lodOn = false; private riderFar = false; private riderWanted = true;
   /** Ignition sweep state (see buildMaterials). `built` turns true when the machine is whole. */
-  readonly buildU: BuildUniforms = { uBO: { value: new THREE.Vector3() }, uBR: { value: BUILT } }; private buildT = -1; built = true; private batonObj: THREE.Object3D | null = null;
+  readonly buildU: BuildUniforms = { uBO: { value: new THREE.Vector3() }, uBR: { value: BUILT }, uBW: { value: 0.9 } }; private buildT = -1; built = true; private batonObj: THREE.Object3D | null = null;
+  /** The machine's own bounds (root space), for the light guides and for how far the build front must travel. */ private box = new THREE.Box3(); private buildMax = 4;
+  private guides: { mesh: THREE.Mesh; count: number; delay: number }[] = []; private guideMat: THREE.MeshBasicMaterial | null = null; private leapT = -1;
   private gloves: { g: GloveHand; pivot: THREE.Group; wrist: THREE.Object3D; arm: THREE.Mesh; axis: THREE.Vector3; elbow: THREE.Vector3; side: number }[] = []; private steerV = 0; private yokeY = 0; private throttleV = 0; private brakeV = 0; private tv = new THREE.Vector3(); private tv2 = new THREE.Vector3();
   /** False while the rider is still on foot during the start sequence. */ mounted = true;
   /** Before the start: engine idling, canopy open where the model has one. */ parked = false;
@@ -142,21 +155,51 @@ export class CycleView {
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, map: glowTex() })); this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.03;
     this.root.add(this.body, this.glow);
     buildMaterials(this.inst.root, this.buildU, color); if (this.lod) buildMaterials(this.lod.root, this.buildU, color);
+    this.root.updateMatrixWorld(true); this.box.setFromObject(this.inst.root); if (this.box.isEmpty() || this.inst.missing) this.box.set(new THREE.Vector3(-0.5, 0, -1.3), new THREE.Vector3(0.5, 1.2, 1.3));
   }
   /** Hides the machine until ignition (the rider is on foot with a baton). */
   unbuilt() { this.built = false; this.buildT = -1; this.buildU.uBR.value = -1; this.glow.visible = false; }
   /** Fires the build sweep from a world point (the rider's hands, or the headset's throwing hand). */
   ignite(from?: THREE.Vector3) {
-    if (this.buildT >= 0 || this.built) return; this.buildT = 0; this.buildU.uBR.value = 0;
-    this.buildU.uBO.value.copy(from ?? this.root.localToWorld(this.tv.set(0, 0.98, 0.32)));
-    const { vfx, audio } = this.ctx, o = this.buildU.uBO.value; vfx.ring(o.x, o.y, o.z, this.color, 0.05, 2.6, 0.5); vfx.sparks(o.x, o.y, o.z, this.color, 40, 5, 0.5, undefined, 0, 0.5);
-    audio.sfx('spawn', this.fp ? undefined : { x: o.x, y: o.y, z: o.z }); this.batonObj?.removeFromParent(); this.batonObj = null;
+    if (this.buildT >= 0 || this.built) return; this.buildT = 0; this.buildU.uBR.value = -1;
+    const o = this.buildU.uBO.value.copy(from ?? this.root.localToWorld(this.tv.set(0, 0.98, 0.32)));
+    // the front has to travel from the hands to the far corner of the machine, plus the lattice band behind it
+    const local = this.root.worldToLocal(this.tv2.copy(o)); let far = 0; for (const x of [this.box.min.x, this.box.max.x]) for (const y of [this.box.min.y, this.box.max.y]) for (const z of [this.box.min.z, this.box.max.z]) far = Math.max(far, local.distanceTo(this.tv.set(x, y, z)));
+    this.buildMax = far + this.buildU.uBW.value + 0.1; this.makeGuides(local);
+    const { vfx, audio } = this.ctx; vfx.ring(o.x, o.y, o.z, this.color, 0.05, 1.6, 0.4); vfx.sparks(o.x, o.y, o.z, this.color, 24, 3.5, 0.45, undefined, 0, 0.4);
+    const at = this.fp ? undefined : { x: o.x, y: o.y, z: o.z }; audio.sfx('spawn', at); audio.sfx('power', at); this.batonObj?.removeFromParent(); this.batonObj = null;
   }
+  /**
+   * Light guides: before any surface forms, lines of light shoot out of the baton and draw the machine's skeleton - its
+   * spine forward to the nose and back to the tail, and both wheel rings - so the build reads as the machine being
+   * drawn around the rider, not appearing beside them. Sized from the machine's own bounds, so any model gets them.
+   */
+  private makeGuides(o: THREE.Vector3) {
+    this.clearGuides(); const b = this.box, mat = (this.guideMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.color).multiplyScalar(2.4), transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const r = THREE.MathUtils.clamp((b.max.y - b.min.y) * 0.46, 0.32, 0.72), wf = new THREE.Vector3(0, b.min.y + r, b.max.z - r), wr = new THREE.Vector3(0, b.min.y + r, b.min.z + r);
+    const top = b.min.y + (b.max.y - b.min.y) * 0.78, V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const add = (curve: THREE.Curve<THREE.Vector3>, segs: number, delay: number, closed = false) => {
+      const g = new THREE.TubeGeometry(curve, segs, 0.017, 6, closed); g.setDrawRange(0, 0); const m = new THREE.Mesh(g, mat); m.frustumCulled = false; m.renderOrder = 3; this.root.add(m);
+      this.guides.push({ mesh: m, count: g.index!.count, delay });
+    };
+    add(new THREE.CatmullRomCurve3([o.clone(), V(0, Math.max(top, o.y), (o.z + b.max.z) / 2), V(0, top * 0.82, b.max.z)]), 40, 0);
+    add(new THREE.CatmullRomCurve3([o.clone(), V(0, Math.max(top, o.y) + 0.05, (o.z + b.min.z) / 2), V(0, top * 0.9, b.min.z)]), 40, 0.05);
+    for (const [c, d] of [[wf, 0.18], [wr, 0.24]] as const) { const pts: THREE.Vector3[] = []; for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2; pts.push(V(0, c.y + Math.cos(a) * r, c.z + Math.sin(a) * r)); } add(new THREE.CatmullRomCurve3(pts, true), 64, d, true); }
+    // keel: under the machine, wheel to wheel
+    add(new THREE.LineCurve3(V(0, b.min.y + 0.12, wr.z), V(0, b.min.y + 0.12, wf.z)), 24, 0.3);
+  }
+  private clearGuides() { for (const g of this.guides) { this.root.remove(g.mesh); g.mesh.geometry.dispose(); } this.guides = []; this.guideMat?.dispose(); this.guideMat = null; }
   private stepBuild(dt: number) {
-    if (this.buildT < 0) return; this.buildT += dt; const k = Math.min(1, this.buildT / 1.15), e = 1 - Math.pow(1 - k, 2.2);
-    this.buildU.uBR.value = e * 4.6; this.glow.visible = !this.fp && e > 0.4;
-    if (k >= 1) { this.buildT = -1; this.built = true; this.buildU.uBR.value = BUILT; this.glow.visible = !this.fp; }
+    if (this.buildT < 0) return; this.buildT += dt; const t = this.buildT;
+    for (const g of this.guides) { const k = THREE.MathUtils.clamp((t - g.delay) / GUIDE_DUR, 0, 1), e = 1 - Math.pow(1 - k, 2); g.mesh.geometry.setDrawRange(0, Math.floor((g.count * e) / 6) * 6); }
+    if (this.guideMat) this.guideMat.opacity = 1 - THREE.MathUtils.clamp((t - BUILD_DUR * 0.75) / (BUILD_DUR * 0.25), 0, 1);
+    // the surface front leaves the hands once the guides are under way, and sweeps steadily (ease in and out)
+    const u = THREE.MathUtils.clamp((t - 0.25) / (BUILD_DUR - 0.25), 0, 1); this.buildU.uBR.value = u * u * (3 - 2 * u) * this.buildMax - 0.05;
+    this.glow.visible = !this.fp && u > 0.6;
+    if (t >= BUILD_DUR) { this.buildT = -1; this.built = true; this.buildU.uBR.value = BUILT; this.glow.visible = !this.fp; this.clearGuides(); }
   }
+  /** 0..1 progress of the build, or 1 when whole. */
+  get buildProgress() { return this.built ? 1 : this.buildT < 0 ? 0 : Math.min(1, this.buildT / BUILD_DUR); }
   /** Puts a baton in a hand (a bone of the walker, or a tracked glove in a headset). */
   holdBaton(parent: THREE.Object3D, worldScale = 1) { const b = baton(this.color); b.scale.setScalar(1 / worldScale); parent.add(b); this.batonObj = b; return b; }
   setRiderVisible(v: boolean) { this.riderWanted = v; this.syncRider(); }
@@ -177,9 +220,16 @@ export class CycleView {
   walk(k: number, dt: number): boolean {
     const w = this.walker; if (!w || this.mounted) return false; if (!w.root.parent) this.root.parent?.add(w.root);
     this.walkT += dt; this.walkReveal.value = this.walkT > 0.6 ? 50 : this.wFrom.y - 0.2 + (this.walkT / 0.6) * 2.4;
-    const e = k * k * (3 - 2 * k); w.root.position.lerpVectors(this.wFrom, this.wTo, e); const moving = k > 0.01 && k < 0.985;
-    const gait = w.actions.Run ? 'Run' : 'Walk'; w.play(moving ? gait : 'Idle', 0.2); if (moving && w.actions[gait]) w.actions[gait].timeScale = 0.5 + 1.6 * k * (1 - k) * 1.6; w.mixer?.update(dt);
-    return k >= 1 ? this.finishWalk() : false;
+    // a sprint onto the mark (easing in only, so it arrives at speed), then a leap: the machine ignites at the top of it
+    if (this.leapT < 0) {
+      const e = k * k; w.root.position.lerpVectors(this.wFrom, this.wTo, e); const moving = k > 0.01;
+      const gait = w.actions.Run ? 'Run' : 'Walk'; w.play(moving ? gait : 'Idle', 0.2); if (moving && w.actions[gait]) w.actions[gait].timeScale = 0.7 + 1.1 * k;
+      if (k >= 1) { this.leapT = 0; if (w.actions.Jump) w.play('Jump', 0.08, true); }
+    } else {
+      this.leapT += dt; const u = Math.min(1, this.leapT / 0.5); w.root.position.copy(this.wTo); w.root.position.y += Math.sin(u * Math.PI) * 0.8;
+      if (this.leapT >= 0.27) { w.mixer?.update(dt); return this.finishWalk(); }
+    }
+    w.mixer?.update(dt); return false;
   }
   /** Seats the rider at once (the walk finished, or the start sequence was skipped). */
   finishWalk(): boolean { if (this.mounted) return false; this.mounted = true; this.walker?.root.removeFromParent(); this.walker = null; this.syncRider(); this.ignite(); return true; }
@@ -434,6 +484,28 @@ export class SpeedLines {
  * out of their hands as a lattice of light and solidifies around them. In a headset the player is already in the seat:
  * the baton is in their own throwing hand, and the machine forms around them when they squeeze (or on the count).
  */
+/** Seconds into the intro at which the player's machine ignites (desktop: while the camera is on it). */
+export const IGNITE_AT = 2.2;
+/** Intro length for the cycle games: establishing shot, the player's ignition up close, then the glide to the start view. */
+export const CYCLE_INTRO = 5.6;
+/**
+ * Desktop intro camera, in three moves that hand off to each other without a cut:
+ *   0 - 1.9 s   establishing: a wide orbit in from behind the grid while the riders run to their marks
+ *   1.6 - 3.9   hero: low and close beside the player's machine as it is drawn and built round the rider
+ *   3.9 - 5.6   settle: glide to the start view (chase camera, or the cockpit eye)
+ */
+export function introCamera(cam: THREE.PerspectiveCamera, t: number, x: number, y: number, z: number, yaw: number, cockpit: boolean) {
+  const sm = (v: number) => { const c = clamp(v, 0, 1); return c * c * (3 - 2 * c); }, fx = Math.sin(yaw), fz = Math.cos(yaw);
+  const s1 = sm(t / 1.9), a1 = yaw + Math.PI + 2.6 - 1.4 * s1, r1 = 26 - 17 * s1, h1 = 12 - 8.5 * s1;
+  const a2 = yaw + Math.PI * 0.6 + (t - 1.9) * 0.1, r2 = 4.7 - clamp(t - 1.9, 0, 2) * 0.3, h2 = 1.2 + clamp(t - 1.9, 0, 2) * 0.12;
+  const pA = _ic.a.set(x + Math.sin(a1) * r1, y + h1, z + Math.cos(a1) * r1), pB = _ic.b.set(x + Math.sin(a2) * r2, y + h2, z + Math.cos(a2) * r2);
+  const pC = cockpit ? _ic.c.set(x + fx * EYE.z, y + EYE.y, z + fz * EYE.z) : _ic.c.set(x - fx * 7.6, y + 3.1, z - fz * 7.6);
+  const lA = _ic.la.set(x, y + 0.8, z), lC = cockpit ? _ic.lc.set(x + fx * 30, y + 0.95, z + fz * 30) : _ic.lc.set(x + fx * 10, y + 1.1, z + fz * 10);
+  const w1 = sm((t - 1.6) / 0.5), w2 = sm((t - 3.9) / 1.7);
+  cam.position.copy(pA).lerp(pB, w1).lerp(pC, w2); cam.lookAt(_ic.lb.copy(lA).lerp(lC, w2));
+}
+const _ic = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), la: new THREE.Vector3(), lb: new THREE.Vector3(), lc: new THREE.Vector3() };
+
 export class StartSequence {
   seated: boolean; private seatT = 0; private called = false; private tmp = new THREE.Vector3(); private vrBaton = false; private prompt = false;
   constructor(private ctx: Ctx, private cv: CycleView[], private colors: number[], private player: number) {
@@ -443,15 +515,17 @@ export class StartSequence {
   }
   /** t: seconds since the intro began; squeeze: the headset's trigger/grip (0..1). */
   update(t: number, dt: number, squeeze = 0) {
-    const k = clamp((t - 0.3) / 2.4, 0, 1);
     this.cv.forEach((v, i) => {
+      // rivals land on their marks one after another (1.3 s on), the player last (1.9 s), while the camera is close
+      const rank = i === this.player ? 0 : 1 + ((i - (i > this.player ? 1 : 0)) % 8), arrive = rank === 0 ? IGNITE_AT - 0.3 : 1.0 + rank * 0.11;
+      const k = clamp((t - 0.25) / (arrive - 0.25), 0, 1);
       if (v.walk(k, dt)) this.onMount(i);
       // machines without a rider on foot (the sealed pod, the player's in a headset) ignite on their own cue
-      else if (!v.built && !v.hasWalker && !(this.vrBaton && i === this.player) && k > 0.55 + i * 0.03) { v.ignite(); this.onMount(i); }
+      else if (!v.built && !v.hasWalker && !(this.vrBaton && i === this.player) && t > arrive + 0.27) { v.ignite(); this.onMount(i); }
     });
     if (this.vrBaton && !this.cv[this.player].built && t > 0.9) {
       if (!this.prompt) { this.prompt = true; this.ctx.hud.coach('SQUEEZE TO IGNITE YOUR CYCLE'); }
-      if (squeeze > 0.6 || k >= 1) this.igniteVR();
+      if (squeeze > 0.6 || t >= IGNITE_AT + 0.6) this.igniteVR();
     }
   }
   private igniteVR() { if (!this.vrBaton) return; this.vrBaton = false; const xm = this.ctx.xr, at = xm.handAnchor(xm.dominant).getWorldPosition(this.tmp); this.cv[this.player].ignite(at.clone()); this.ctx.hud.coach(null); xm.pulse('both', 0.9, 260); this.onMount(this.player); }
@@ -462,8 +536,9 @@ export class StartSequence {
   tick(dt: number) { if (this.seatT > 0) { this.seatT -= dt; if (this.seatT <= 0) { this.seated = true; this.ctx.engine.fadeTo(0, 3); } } }
   private onMount(i: number) {
     const { vfx, audio } = this.ctx, p = this.cv[i].root.position, col = this.colors[i];
-    vfx.motes(p.x, p.y, p.z, col, 1.4, 2.2, 10); vfx.ring(p.x, p.y + 0.05, p.z, col, 0.3, 2.6, 0.6);
-    if (i === this.player) audio.sfx('spawn');
+    // a ring on the deck marks the landing; the build itself carries the moment, so nothing here hides it
+    vfx.ring(p.x, p.y + 0.04, p.z, col, 0.4, 3.2, 0.7);
+    if (i === this.player) audio.sfx('go');
     else if (!this.called) { this.called = true; audio.vo('jeer_intro', 'Rival: "Prepare yourself."', { x: p.x, y: p.y + 1.4, z: p.z }, 0.9); }
     else audio.sfx('spawn', { x: p.x, y: p.y + 1, z: p.z });
   }
