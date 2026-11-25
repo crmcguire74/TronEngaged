@@ -6,7 +6,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 const BASE = import.meta.env.BASE_URL + 'game-assets/';
 export const ASSET_PATHS: Record<string, string> = {
   'char:azure': 'characters/player/runner-azure.glb', 'char:cobalt': 'characters/player/runner-cobalt.glb', 'char:ivory': 'characters/enemies/runner-ivory.glb', 'char:crimson': 'characters/bosses/runner-crimson.glb',
-  'cycle:azure': 'vehicles/player/cycle-azure.glb', 'cycle:violet': 'vehicles/player/cycle-violet.glb', 'cycle:jade': 'vehicles/enemies/cycle-jade.glb', 'cycle:ember': 'vehicles/enemies/cycle-ember.glb',
+  'cycle:blade': 'vehicles/player/cycle-blade.glb', 'cycle:azure': 'vehicles/player/cycle-azure.glb', 'cycle:violet': 'vehicles/player/cycle-violet.glb', 'cycle:jade': 'vehicles/enemies/cycle-jade.glb', 'cycle:ember': 'vehicles/enemies/cycle-ember.glb',
   'cycle:wraith': 'vehicles/enemies/cycle-wraith.glb', 'cycle:bulwark': 'vehicles/enemies/cycle-bulwark.glb',
   'cycle:argon': 'vehicles/enemies/cycle-argon.glb', 'cycle:moto': 'vehicles/enemies/cycle-moto.glb',
   'cycle:agile': 'vehicles/enemies/cycle-agile.glb', 'cycle:flynn': 'vehicles/player/cycle-flynn.glb',

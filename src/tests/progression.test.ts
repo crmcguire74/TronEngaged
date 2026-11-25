@@ -78,9 +78,15 @@ describe('persistence', () => {
     const a = new SaveStore(); await a.load(); a.recordTier('discs:1', 1234, 20, 'veteran'); a.data.settings.volume.music = 0.25; a.data.settings.bindings.jump = 'KeyJ'; a.unlock(['skin:cobalt']); a.data.endless.discs = { bestWave: 7, bestScore: 9000, seed: 42 }; await a.flush();
     const b = new SaveStore(); const d = await b.load(); expect(d.completed['discs:1'].best).toBe(1234); expect(d.completed['discs:1'].difficulty).toBe('veteran'); expect(d.settings.volume.music).toBe(0.25); expect(d.settings.bindings.jump).toBe('KeyJ'); expect(d.unlocks).toContain('skin:cobalt'); expect(d.endless.discs.bestWave).toBe(7);
   });
+  it('moves players on the old default machine onto the Blade once, and leaves a chosen machine alone', () => {
+    expect(migrate({ version: 1, settings: { cycle: 'azure' } }).settings.cycle).toBe('blade');
+    expect(migrate({ version: 1, settings: { cycle: 'ember' } }).settings.cycle).toBe('ember');
+    expect(migrate({ version: 2, settings: { cycle: 'azure' } }).settings.cycle).toBe('azure');
+    expect(migrate({ version: 1, unlocks: ['skin:azure'] }).unlocks).toContain('cycle:blade');
+  });
   it('keeps the best score and migrates older saves onto current defaults', () => {
     const s = new SaveStore(); s.recordTier('k', 500, 30, 'standard'); s.recordTier('k', 300, 10, 'master'); expect(s.data.completed.k.best).toBe(500); expect(s.data.completed.k.time).toBe(10); expect(s.data.completed.k.clears).toBe(2);
-    const m = migrate({ settings: { volume: { master: 0.1 } }, completed: { x: { best: 1 } } }); expect(m.settings.volume.master).toBe(0.1); expect(m.settings.volume.music).toBeGreaterThan(0); expect(m.settings.vr.snapTurn).toBe(true); expect(m.completed.x.best).toBe(1); expect(migrate(null).unlocks.length).toBe(3);
+    const m = migrate({ settings: { volume: { master: 0.1 } }, completed: { x: { best: 1 } } }); expect(m.settings.volume.master).toBe(0.1); expect(m.settings.volume.music).toBeGreaterThan(0); expect(m.settings.vr.snapTurn).toBe(true); expect(m.completed.x.best).toBe(1); expect(migrate(null).unlocks.length).toBe(4);
   });
 });
 

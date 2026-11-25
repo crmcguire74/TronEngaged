@@ -11,7 +11,7 @@ export interface Settings {
 }
 export interface TierRecord { best: number; difficulty: DifficultyId; time: number; clears: number; scoring: number }
 export interface SaveData {
-  version: 1; settings: Settings; completed: Record<string, TierRecord>;
+  version: number; settings: Settings; completed: Record<string, TierRecord>;
   endless: Record<string, { bestWave: number; bestScore: number; seed: number }>;
   unlocks: string[]; achievements: string[]; seenSplash: boolean;
   last: { game: 'discs' | 'cycles'; track: string; tier: number } | null;
@@ -29,11 +29,11 @@ export function defaultSettings(): Settings {
     sensitivity: 1, invertY: false, deadzone: 0.15, padSensitivity: 1, aimAssist: true, steerAssist: false, autoRecall: false,
     bindings: { ...DEFAULT_BINDINGS },
     vr: { snapTurn: true, snapAngle: 30, seated: false, vignette: 0.6, throwMode: 'aim', moveSpeed: 1, height: 0, leftHanded: false, seat: 0, map: 'left', cycleView: 'auto' },
-    difficulty: 'standard', cycleCamera: 'chase', skin: 'azure', cycle: 'azure', trail: 'ion', disc: 'azure',
+    difficulty: 'standard', cycleCamera: 'chase', skin: 'azure', cycle: 'blade', trail: 'ion', disc: 'azure',
   };
 }
 export function defaultSave(): SaveData {
-  return { version: 1, settings: defaultSettings(), completed: {}, endless: {}, unlocks: ['skin:azure', 'cycle:azure', 'trail:ion'], achievements: [], seenSplash: false, last: null, totals: { parries: 0, ricochets: 0, traps: 0, raceWins: 0, shattered: 0, playSeconds: 0 }, scores: [] };
+  return { version: 2, settings: defaultSettings(), completed: {}, endless: {}, unlocks: ['skin:azure', 'cycle:blade', 'cycle:azure', 'trail:ion'], achievements: [], seenSplash: false, last: null, totals: { parries: 0, ricochets: 0, traps: 0, raceWins: 0, shattered: 0, playSeconds: 0 }, scores: [] };
 }
 /** Merges a stored blob over current defaults so new settings appear after updates without wiping progress. */
 export function migrate(raw: any): SaveData {
@@ -41,7 +41,10 @@ export function migrate(raw: any): SaveData {
   const s: SaveData = { ...d, ...raw, settings: { ...d.settings, ...(raw.settings ?? {}) }, totals: { ...d.totals, ...(raw.totals ?? {}) } };
   s.settings.volume = { ...d.settings.volume, ...(raw.settings?.volume ?? {}) }; s.settings.vr = { ...d.settings.vr, ...(raw.settings?.vr ?? {}) }; s.settings.bindings = { ...d.settings.bindings, ...(raw.settings?.bindings ?? {}) };
   for (const u of d.unlocks) if (!s.unlocks.includes(u)) s.unlocks.push(u);
-  s.version = 1; return s;
+  // version 2: the Blade became the starting machine. Players still on the old default move onto it once; anyone who
+  // chose another machine keeps it.
+  if ((raw.version ?? 1) < 2 && s.settings.cycle === 'azure') s.settings.cycle = 'blade';
+  s.version = 2; return s;
 }
 
 const DB = 'tron-engaged', LEGACY_DB = 'vanta-arc', STORE = 'save', KEY = 'profile';
