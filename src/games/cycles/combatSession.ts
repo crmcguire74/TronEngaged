@@ -5,6 +5,7 @@ import type { SimEvent } from '../../engine/events';
 import { Carrier, Drones, Patrol } from '../../engine/patrol';
 import { TONE, Crowd, boundaryWall, edgeBlock, gridFloor, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { CITY_PANO } from '../../engine/assets';
+import { Ambient } from '../../engine/ambient';
 import { angleLerp, clamp, damp, lerp, smooth } from '../../engine/math';
 import { buildCombatConfig, combatRivalModels } from '../../progression/build';
 import { cycleFinalScore } from '../../progression/scoring';
@@ -62,6 +63,7 @@ export class CombatSession extends BaseSession {
       for (const e of [-1, 1]) for (const s2 of [-1, 1]) { const post = edgeBlock(0.35, 1.4, 0.35, ION_LANE); const a = e * ln.len, b = s2 * (ln.hw + 0.5); post.position.set(ln.x + (ln.axis === 0 ? a : b), 0.7, ln.z + (ln.axis === 0 ? b : a)); W.add(post); }
     }
     this.lines = new SpeedLines(th.accent); W.add(this.lines.mesh);
+    this.ambient = new Ambient(th, { cx: 0, cz: 0, groundY: 0, rMin: H + 60, rMax: H + 230, hMin: 30, hMax: 110, seed: tier.id * 31, xr: ctx.xr.presenting, quality: ctx.settings.quality }); W.add(this.ambient.group);
     W.add(ctx.vfx.group); ctx.vfx.clear(); eng.setWorld(W);
     ctx.hud.show('combat'); ctx.audio.playMusic('cycles'); ctx.audio.ambience(tier.environment); ctx.audio.intensity = 0.3; ctx.audio.setCrowdBed(this.crowd ? 0.02 : 0);
     ctx.hud.banner(`TIER ${tier.endless ? '∞' : String(tier.id).padStart(2, '0')} — ${tier.name.toUpperCase()}`, tier.brief, this.introDur * 1000 - 400);
@@ -181,7 +183,7 @@ export class CombatSession extends BaseSession {
 
   protected view(dt: number, alpha: number, a: Actions) {
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, t = engine.elapsed, cam = engine.camera, H = sim.half;
-    for (const m of this.timed) m.uniforms.uTime.value = t;
+    for (const m of this.timed) m.uniforms.uTime.value = t; this.ambient.update(t, this.phase === 'play' ? clamp(0.4 + this.sim.aliveRivals() * 0.1 + (this.sim.player.boosting ? 0.3 : 0), 0, 1) : 0.2);
     const pu = (this.floor.material as THREE.ShaderMaterial).uniforms.uPulse.value as THREE.Vector4; if (pu.w > 0.01) { pu.z += dt * 60; pu.w *= Math.exp(-1.6 * dt); }
     this.crowd?.update(dt, t); this.patrol.update(dt); vfx.update(dt);
     if (a.camera && !this.xr && this.phase !== 'intro') { this.cockpit = !this.cockpit; this.ctx.settings.cycleCamera = this.cockpit ? 'cockpit' : 'chase'; }
@@ -255,6 +257,6 @@ export class CombatSession extends BaseSession {
       // built only on the frames the map is redrawn (every third), not every frame: less garbage, fewer GC pauses
       radar: this.radarFn ??= () => ({ kind: 'grid', half: this.sim.half, half0: this.sim.half0, obstacles: this.sim.obstacles, pickups: this.sim.pickups, cycles: this.sim.cycles.map((c, i) => ({ x: c.x, z: c.z, h: yawOf(c.dir), color: css(this.colors[i]), player: c.isPlayer, alive: c.alive, gone: c.trailGone, trail: c.trail })) }) });
   }
-  private radarFn: (() => any) | null = null;
+  private radarFn: (() => any) | null = null; private ambient!: Ambient;
   dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
 }

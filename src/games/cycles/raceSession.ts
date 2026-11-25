@@ -5,6 +5,7 @@ import type { SimEvent } from '../../engine/events';
 import { CITY_PANO, tuneEmissive } from '../../engine/assets';
 import { TONE, edgeBlock, gridFloor, hardlight, lights, skyDome, suppliedSky, skyline, theme, type Theme } from '../../engine/env';
 import { Ribbon } from '../../engine/vfx';
+import { Ambient } from '../../engine/ambient';
 import { Carrier, Drones, Patrol } from '../../engine/patrol';
 import { angleLerp, clamp, damp, lerp, smooth, wrapAngle } from '../../engine/math';
 import { buildRaceConfig, raceRivalModels } from '../../progression/build';
@@ -79,7 +80,9 @@ export class RaceSession extends BaseSession {
           float dash = (1.0 - smoothstep(0.09, 0.09 + aw, abs(x))) * step(0.5, fract(v / 8.0)); float bar = 1.0 - smoothstep(0.03, 0.03 + fwidth(v) * 1.5, abs(fract(v / 16.0) - 0.5) * 16.0);
           float start = step(v, 3.0) * step(0.5, fract(x * 0.5) + step(1.5, v) * 0.5 - floor(fract(x * 0.5) + step(1.5, v) * 0.5));
           float dist = length(vW - cameraPosition); float fade = 1.0 - smoothstep(180.0, 520.0, dist);
-          vec3 col = vec3(0.012, 0.016, 0.026) + uLine * (edge * 1.6 + lane * 0.3 * fade + bar * 0.06 * fade) + vec3(0.85) * dash * 0.5 * fade + vec3(1.0) * start * 0.7;
+          // energy runs down the road edges ahead of the riders: bright pulses every 70 m, travelling at speed
+          float run = smoothstep(0.86, 1.0, fract(v / 70.0 - uTime * 1.15)) + 0.6 * smoothstep(0.93, 1.0, fract(v / 23.0 - uTime * 2.3));
+          vec3 col = vec3(0.012, 0.016, 0.026) + uLine * (edge * (1.6 + run * 1.6) + lane * (0.3 + run * 0.5) * fade + bar * 0.06 * fade) + vec3(0.85) * dash * 0.5 * fade + vec3(1.0) * start * 0.7;
           vec3 vd = normalize(cameraPosition - vW); col += uLine * pow(1.0 - max(vd.y, 0.0), 6.0) * 0.08;
           gl_FragColor = vec4(col, 1.0); ${TONE} }` });
     W.add(new THREE.Mesh(ribbonGeo(t, -hw, hw, 0, 0), road)); this.timed.push(road);
@@ -111,6 +114,7 @@ export class RaceSession extends BaseSession {
     for (const s of sim.slows) { const mid = wrapIdx(t, Math.round((s.i0 + s.i1) / 2)), len = (s.i1 - s.i0) * t.step; const box = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), new THREE.MeshBasicMaterial({ color: 0x8a5cff, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); box.scale.set(len * 0.55, 12, len * 0.55); box.position.set(t.x[mid], t.y[mid] + 3, t.z[mid]); W.add(box); }
     if (ctx.assets.has('city') && ['metropolis', 'neon-circuit'].includes(tier.environment) && t.closed) { const c = ctx.assets.instance('city').root; let rmin = 1e9; for (let i = 0; i < t.n; i++) rmin = Math.min(rmin, Math.hypot(t.x[i] - cx, t.z[i] - cz)); const box = new THREE.Box3().setFromObject(c), half = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2 || 50, k = Math.max(0, rmin - hw - 16) / half; c.visible = k * half > 40; c.scale.setScalar(k); c.position.set(cx - ((box.min.x + box.max.x) / 2) * k, groundY + 8.4 * k, cz - ((box.min.z + box.max.z) / 2) * k); c.traverse((o: any) => { if (o.isMesh) o.castShadow = false; }); W.add(c); }
     const sl = skyline(90, R + 160, R + 620, th, tier.id * 5 + stage, groundY, 220); sl.position.set(cx, 0, cz); W.add(sl);
+    this.ambient = new Ambient(th, { cx, cz, groundY, rMin: R + 40, rMax: R + 240, hMin: 40, hMax: 150, seed: tier.id * 31 + stage, xr: ctx.xr.presenting, quality: ctx.settings.quality }); W.add(this.ambient.group);
     sim.racers.forEach((r) => { const col = r.isPlayer ? playerTrail(ctx) : CYCLE_COLORS[r.model] ?? 0xff5a36; this.colors.push(col); const v = new CycleView(ctx, r.model, col, r.isPlayer ? 'char:' + ctx.settings.skin : undefined); v.reveal.value = r.y - 1; v.parked = true; W.add(v.root); this.cv.push(v); const tail = new Ribbon(col, 16, 0.22); (tail.mesh.material as THREE.ShaderMaterial).uniforms.uOpacity.value = 0.45; tail.reset(r.x, r.y + 0.5, r.z); W.add(tail.mesh); this.tails.push(tail); });
     // air interceptor: the supplied light jet, scaled and turned nose-forward, with a short exhaust ribbon
     if (sim.jet && ctx.assets.has('jet')) {
@@ -218,7 +222,7 @@ export class RaceSession extends BaseSession {
 
   protected view(dt: number, alpha: number, a: Actions) {
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, T = sim.track, t = engine.elapsed, cam = engine.camera;
-    for (const m of this.timed) m.uniforms.uTime.value = t; this.patrol.update(dt); vfx.update(dt); this.padT -= dt; this.sim.gates.forEach((gt, k) => { const v = this.gv[k]; if (!v) return; v.spin.rotation.z = t * 1.4 + k; const f = gt.flash / 0.6; v.fill.opacity = 0.06 + 0.03 * Math.sin(t * 4 + k) + 0.45 * f; v.g.scale.setScalar(1 + 0.15 * f); });
+    for (const m of this.timed) m.uniforms.uTime.value = t; this.patrol.update(dt); this.ambient.update(t, this.phase === 'play' ? clamp(this.sim.player.speed / this.sim.player.veh.top, 0, 1) : 0.2); vfx.update(dt); this.padT -= dt; this.sim.gates.forEach((gt, k) => { const v = this.gv[k]; if (!v) return; v.spin.rotation.z = t * 1.4 + k; const f = gt.flash / 0.6; v.fill.opacity = 0.06 + 0.03 * Math.sin(t * 4 + k) + 0.45 * f; v.g.scale.setScalar(1 + 0.15 * f); });
     if (a.camera && !this.xr && this.phase !== 'intro') { this.cockpit = !this.cockpit; this.ctx.settings.cycleCamera = this.cockpit ? 'cockpit' : 'chase'; }
     this.fog.density = damp(this.fog.density, this.th.fogDensity * (this.storm ? 7 : 1), 3, dt);
     const hums: { x: number; y: number; z: number; pitch: number; gain: number }[] = [];
@@ -316,6 +320,6 @@ export class RaceSession extends BaseSession {
     if (this.format === 'gauntlet') data.integrity = P.integrity; if (this.format === 'elimination' && this.phase === 'play') data.elim = sim.elimT; if (this.format === 'pursuit' && !tgt.out) data.gap = Math.max(0, Math.round((tgt.progress - P.progress) * T.step));
     hud.update(data);
   }
-  private radarFn: (() => any) | null = null;
+  private radarFn: (() => any) | null = null; private ambient!: Ambient;
   dispose() { const { audio, engine } = this.ctx; if (this.seatDirty) this.ctx.store.save(); engine.fadeTo(0); this.ctx.xr.showHands = true; this.ctx.hud.vrSeat = null; audio.engine(false); audio.hums([]); engine.vignetteAmount = 0; engine.camera.fov = 62; engine.camera.updateProjectionMatrix(); this.world.remove(this.ctx.vfx.group); }
 }
