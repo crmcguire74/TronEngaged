@@ -41,7 +41,7 @@ export function revealMaterials(root: THREE.Object3D, uni: { value: number }, gl
   });
 }
 
-interface FighterView { travel?: boolean; id: number; inst: Instance; root: THREE.Group; reveal: { value: number }; marker: THREE.Sprite | null; markerCtx: CanvasRenderingContext2D | null; markerTex: THREE.CanvasTexture | null; hpShown: number; shield: THREE.Mesh; tell: THREE.Mesh; tellT: number; tellDur: number; throwT: number; hitT: number; props: { hand?: THREE.Object3D; back?: THREE.Object3D; shield?: THREE.Object3D }; ring: THREE.Mesh; height: number; late: boolean; hold: number; greeted: boolean; yaw?: number; dead?: boolean; deathT: number; deathDur?: number; burst?: boolean; baseY?: number; hx?: number; hz?: number; popT?: number; scrub?: boolean; run?: boolean; lean?: number }
+interface FighterView { hitShell?: THREE.Mesh; hitFlash?: number; travel?: boolean; id: number; inst: Instance; root: THREE.Group; reveal: { value: number }; marker: THREE.Sprite | null; markerCtx: CanvasRenderingContext2D | null; markerTex: THREE.CanvasTexture | null; hpShown: number; shield: THREE.Mesh; tell: THREE.Mesh; tellT: number; tellDur: number; throwT: number; hitT: number; props: { hand?: THREE.Object3D; back?: THREE.Object3D; shield?: THREE.Object3D }; ring: THREE.Mesh; height: number; late: boolean; hold: number; greeted: boolean; yaw?: number; dead?: boolean; deathT: number; deathDur?: number; burst?: boolean; baseY?: number; hx?: number; hz?: number; popT?: number; scrub?: boolean; run?: boolean; lean?: number }
 interface DiscView { id: number; root: THREE.Group; model: THREE.Object3D; /** alternate bodies for re-armed rivals */ lance: THREE.Object3D | null; arc: THREE.Object3D | null; ribbon: Ribbon; rise: Ribbon | null; glow: THREE.Mesh; rim: THREE.MeshBasicMaterial | null; mark: THREE.Sprite | null; color: number; hostile: boolean; shown: number }
 /** Rival discs are always this colour, whatever the rival's own colour: red means "this one can hurt you". */
 const HOSTILE = 0xff4018, HOMING = 0xff2bd0, AMP = 0xffc23a;
@@ -59,6 +59,14 @@ function reticle(): THREE.CanvasTexture {
  * escalates with the tier: a serrated ring early, a triangle from tier 11, a four-point star from tier 21 and on
  * every boss. Geometry is built once per form and shared.
  */
+let hazardTex: THREE.CanvasTexture | null = null;
+/** Hazard sign for a failing deck: a red-rimmed warning triangle with a down arrow. */
+function hazardSign(): THREE.CanvasTexture {
+  if (hazardTex) return hazardTex; const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d')!;
+  x.lineJoin = 'round'; x.beginPath(); x.moveTo(64, 10); x.lineTo(120, 110); x.lineTo(8, 110); x.closePath(); x.fillStyle = 'rgba(30,4,2,0.9)'; x.fill(); x.lineWidth = 9; x.strokeStyle = '#ff3a1c'; x.stroke();
+  x.fillStyle = '#ffd23c'; x.beginPath(); x.moveTo(64, 96); x.lineTo(44, 66); x.lineTo(56, 66); x.lineTo(56, 40); x.lineTo(72, 40); x.lineTo(72, 66); x.lineTo(84, 66); x.closePath(); x.fill();
+  return (hazardTex = new THREE.CanvasTexture(c));
+}
 export type DiscForm = 'ring' | 'tri' | 'star';
 export const discForm = (tierId: number, boss: boolean): DiscForm => (boss || tierId > 20 ? 'star' : tierId > 10 ? 'tri' : 'ring');
 const formGeo = new Map<DiscForm, { rim: THREE.BufferGeometry; core: THREE.BufferGeometry }>();
@@ -107,7 +115,7 @@ class BeamView {
     const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.aA.needsUpdate = true; g.index!.needsUpdate = true; g.setDrawRange(0, n6); this.mesh.visible = n6 > 0;
   }
 }
-interface PlatView { root: THREE.Group; ring: THREE.Mesh; surge: THREE.Mesh; sink: number; beam: THREE.Mesh }
+interface PlatView { sign?: THREE.Sprite; klaxon?: number; root: THREE.Group; ring: THREE.Mesh; surge: THREE.Mesh; sink: number; beam: THREE.Mesh }
 
 export class DiscSession extends BaseSession {
   readonly mode = 'discs' as const; sim: DiscSim; private th: Theme; private intent = emptyIntent();
@@ -219,12 +227,14 @@ export class DiscSession extends BaseSession {
     let marker: THREE.Sprite | null = null, markerCtx: CanvasRenderingContext2D | null = null, markerTex: THREE.CanvasTexture | null = null;
     if (!f.isPlayer) { const c = document.createElement('canvas'); c.width = 256; c.height = 96; markerCtx = c.getContext('2d')!; markerTex = new THREE.CanvasTexture(c); marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTex, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false })); marker.scale.set(0.16, 0.06, 1); marker.position.y = 2.15 * f.arch.scale + 0.35; marker.renderOrder = 50; root.add(marker); }
     this.world.add(root);
-    const fvv: FighterView = { id: f.id, inst, root, reveal, marker, markerCtx, markerTex, hpShown: -1, shield, tell, tellT: 0, tellDur: 1, throwT: 0, hitT: 0, props, ring, height: 1.85 * f.arch.scale, late: false, hold: 0, greeted: false, deathT: 0 };
+    // the player's hit shell: a red glow that wraps the body for a beat when a disc lands, so the blow is seen on the body
+    let hitShell: THREE.Mesh | undefined; if (f.isPlayer) { hitShell = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); hitShell.scale.set(0.55, 1.05, 0.55); hitShell.position.y = 1.0; hitShell.visible = false; root.add(hitShell); }
+    const fvv: FighterView = { hitShell, hitFlash: 0, id: f.id, inst, root, reveal, marker, markerCtx, markerTex, hpShown: -1, shield, tell, tellT: 0, tellDur: 1, throwT: 0, hitT: 0, props, ring, height: 1.85 * f.arch.scale, late: false, hold: 0, greeted: false, deathT: 0 };
     this.fv.set(f.id, fvv); inst.play('Idle', 0);
     for (const id of f.discIds) this.addDisc(id, f);
   }
   // ---------------------------------------------------------------- core breach and power nodes
-  private seenNode = false; private frames!: ArenaFrames; private beams: BeamView | null = null; private seenCut = false; private locked = new Set<number>(); private ambient!: Ambient;
+  private seenNode = false; private fallFrom = new THREE.Vector3(); /** >0 while the player is falling: seconds since they went over the edge */ private fallCam = 0; private frames!: ArenaFrames; private beams: BeamView | null = null; private seenCut = false; private locked = new Set<number>(); private ambient!: Ambient;
   private coreV: { root: THREE.Group; shell: THREE.Group; core: THREE.Mesh; coreMat: THREE.MeshBasicMaterial; halo: THREE.Mesh; pips: THREE.MeshBasicMaterial[] } | null = null;
   private nodeV = new Map<number, { g: THREE.Group; kind: string }>();
   /**
@@ -426,7 +436,7 @@ export class DiscSession extends BaseSession {
       case 'bounce': audio.sfx('ricochet', e, e.kind === 'barrier' ? 1.3 : e.kind === 'platform' ? 0.8 : 1); vfx.sparks(e.x, e.y, e.z, this.dv.get(e.disc)?.color ?? ION, 18, 8, 0.4, e); vfx.ring(e.x + e.nx * 0.05, e.y + e.ny * 0.05, e.z + e.nz * 0.05, this.th.accent, 0.2, 2.2, 0.4, e); for (const m of this.wallMats) m.uniforms.uFlash.value = Math.max(m.uniforms.uFlash.value, e.kind === 'wall' ? 0.05 : 0); break;
       case 'catch': if (mine) { audio.sfx('catch'); xr.pulse(xr.dominant, 0.5, 50); input.rumble(0.2, 0.4, 60); } break;
       case 'recall': if (mine) audio.sfx('recall'); break;
-      case 'hit': vfx.sparks(e.x, e.y, e.z, mine ? HOSTILE : ION, 30, 10, 0.5, { x: e.dx, y: 0.4, z: e.dz }); vfx.ring(e.x, e.y, e.z, mine ? HOSTILE : ION, 0.1, 1.4, 0.25, { x: e.dx, y: 0, z: e.dz }); audio.sfx(mine ? 'hurt' : 'hit', e); if (mine) { audio.sfx('grunt'); engine.hurt(0.95, { x: -e.dx, y: 0, z: -e.dz }, true); } if (v) { v.hitT = 0.4; v.hx = e.dx; v.hz = e.dz; } if (!mine) { this.crowd.excite(e.bounces > 0 ? 1 : 0.7); if (e.bounces > 0) audio.cheer(0.6); } break;
+      case 'hit': vfx.sparks(e.x, e.y, e.z, mine ? HOSTILE : ION, 30, 10, 0.5, { x: e.dx, y: 0.4, z: e.dz }); vfx.ring(e.x, e.y, e.z, mine ? HOSTILE : ION, 0.1, 1.4, 0.25, { x: e.dx, y: 0, z: e.dz }); audio.sfx(mine ? 'hurt' : 'hit', e); if (mine) { audio.sfx('grunt'); engine.hurt(0.95, { x: -e.dx, y: 0, z: -e.dz }, true); if (v) v.hitFlash = 1; vfx.sparks(e.x, e.y, e.z, 0xffffff, 50, 12, 0.35, { x: e.dx, y: 0.3, z: e.dz }); vfx.ring(e.x, e.y, e.z, 0xff3020, 0.2, 2.6, 0.35, { x: e.dx, y: 0, z: e.dz }); this.slow(0.2, 0.15); engine.addShake(0.8); } if (v) { v.hitT = 0.4; v.hx = e.dx; v.hz = e.dz; } if (!mine) { this.crowd.excite(e.bounces > 0 ? 1 : 0.7); if (e.bounces > 0) audio.cheer(0.6); } break;
       case 'damage': if (mine) { if (e.cause !== 'disc') { audio.sfx('grunt'); engine.hurt(0.8); } hud.flash('hurt'); engine.addShake(0.6); xr.pulse('both', 0.9, 160); input.rumble(1, 0.8, 220); audio.intensity = Math.min(1, audio.intensity + 0.15); } break;
       case 'block': audio.sfx('block', e); vfx.sparks(e.x, e.y, e.z, 0xbfe9ff, 14, 6, 0.3); vfx.ring(e.x, e.y, e.z, 0xbfe9ff, 0.2, 1.4, 0.3, f ? { x: f.ax, y: 0, z: f.az } : undefined); if (mine) { xr.pulse(xr.offhand, 0.8, 90); input.rumble(0.6, 0.3, 100); } break;
       case 'parry': audio.sfx('parry', e); vfx.sparks(e.x, e.y, e.z, 0xffffff, 40, 13, 0.6); vfx.ring(e.x, e.y, e.z, 0xffffff, 0.3, 3.4, 0.45, f ? { x: f.ax, y: 0, z: f.az } : undefined); vfx.flash(e.x, e.y, e.z, 0xffffff, 14); if (mine) { hud.flash('good'); xr.pulse(xr.offhand, 1, 140); input.rumble(0.9, 0.9, 140); this.crowd.excite(1.2); audio.cheer(0.9); } break;
@@ -439,13 +449,14 @@ export class DiscSession extends BaseSession {
       case 'land': audio.sfx('land', pos); if (f) { vfx.ring(f.x, f.y + 0.05, f.z, mine ? ION : f.arch.tint, 0.3, mine ? 2.6 : 1.6, 0.4); if (v && !mine && v.inst.actions.Land) { v.inst.play('Land', 0.06, true); v.hold = 0.28; } } if (mine) { vfx.motes(P.x, P.y, P.z, ION, 1.6, 0.6, 30); xr.pulse('both', 0.7, 70); } break;
       case 'dodge': audio.sfx('dodge', pos); break;
       case 'evade': if (mine) hud.toast('EVADED', 'good'); break;
-      case 'fall': audio.sfx('platformDown', pos); if (mine) { hud.toast('FALL', 'danger'); engine.derezTo(0.9, 2.6); } break;
-      case 'respawn': if (f) { vfx.motes(f.x, f.y, f.z, mine ? ION : f.arch.tint, 0.7, 2, 40); audio.sfx('spawn', pos); } if (mine) engine.derezTo(0, 2.2); break;
+      case 'fall': audio.sfx('platformDown', pos); audio.sfx('scream', mine ? undefined : pos); if (mine) { hud.toast('FALLING', 'danger'); this.fallCam = 0.001; if (this.xr) engine.fadeTo(1, 1.4); xr.pulse('both', 0.8, 700); input.rumble(0.8, 0.6, 700); } break;
+      case 'respawn': if (mine) { this.fallCam = 0; engine.fadeTo(0, 2.5); } if (f) { vfx.motes(f.x, f.y, f.z, mine ? ION : f.arch.tint, 0.7, 2, 40); audio.sfx('spawn', pos); } if (mine) engine.derezTo(0, 2.2); break;
       case 'shatter': {
         // the blow lands first: a white flash and a held beat. The body overloads and bursts a moment later (see the fighter view).
         vfx.sparks(e.x, e.y + 1.1, e.z, 0xffffff, 40, 13, 0.3); vfx.flash(e.x, e.y + 1.2, e.z, e.player ? ION : e.tint, 36); engine.addShake(e.boss ? 0.9 : e.player ? 0.8 : 0.4);
         this.slow(e.player ? 1.6 : e.boss ? 1.5 : 0.55, e.player ? 0.12 : e.boss ? 0.1 : 0.2);
-        if (!e.player) { this.crowd.excite(e.boss ? 1.6 : 1.1); audio.cheer(e.boss ? 1.6 : e.cause === 'fall' ? 1.2 : 0.8); } else { audio.sfx('scream'); xr.pulse('both', 1, 900); input.rumble(1, 1, 900); }
+        // a fall already screamed on the way down; only a disc kill screams here
+        if (!e.player) { this.crowd.excite(e.boss ? 1.6 : 1.1); audio.cheer(e.boss ? 1.6 : e.cause === 'fall' ? 1.2 : 0.8); } else { if (e.cause !== 'fall') audio.sfx('scream'); xr.pulse('both', 1, 900); input.rumble(1, 1, 900); }
         break;
       }
       case 'score': hud.toast(`${e.label}  +${e.points}`, 'score'); break;
@@ -504,6 +515,9 @@ export class DiscSession extends BaseSession {
         if (k >= 1 && !this.locked.has(i)) { this.locked.add(i); this.ctx.vfx.ring(p.x, p.y + 0.05, p.z, this.th.accent, p.r * 0.6, p.r * 1.6, 0.5); this.ctx.audio.sfx('platformUp', { x: p.x, y: p.y, z: p.z }); } }
       v.root.position.set(p.x, p.y - v.sink * 16 - rise, p.z); v.root.visible = v.sink < 0.97;
       const rm = v.ring.material as THREE.MeshBasicMaterial, warn = p.state === 'warn';
+      // a deck about to go carries a hazard sign over it, pulsing, and the player's own deck sounds a klaxon
+      if (warn && !v.sign) { v.sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: hazardSign(), transparent: true, depthWrite: false, depthTest: false })); v.sign.scale.set(2.4, 2.4, 1); v.sign.renderOrder = 30; v.root.add(v.sign); }
+      if (v.sign) { v.sign.visible = warn; if (warn) { v.sign.position.y = 3.4 + 0.25 * Math.sin(t * 6); (v.sign.material as THREE.SpriteMaterial).opacity = 0.6 + 0.4 * Math.abs(Math.sin(t * 8)); if (i === P.platform && Math.floor(t * 2.5) !== v.klaxon) { v.klaxon = Math.floor(t * 2.5); this.ctx.audio.sfx('warn'); } } }
       v.ring.scale.setScalar(warn ? 1 + 0.03 * Math.sin(t * 28) : 1); rm.color.setHex(warn ? (Math.sin(t * 28) > 0 ? 0xffffff : 0xff3b30) : p.side === 0 ? (this.interfere ? 0xb77bff : ION) : this.th.accent2 === ION ? 0xff8a3c : this.th.accent2);
       const sm = v.surge.material as THREE.MeshBasicMaterial, target = i === this.hopTo && !P.hop && !P.falling;
       // deck wash: red and quickening = this platform is about to drop; yellow = a surge is charging; soft blue = your hop target
@@ -546,6 +560,7 @@ export class DiscSession extends BaseSession {
       if (f.spawnT > 0 && this.introDone && v.late) { v.reveal.value = f.y - 0.2 + (1 - f.spawnT / 1.4) * 2.8 * f.arch.scale; if (Math.random() < 0.6) vfx.motes(f.x, f.y, f.z, f.arch.tint, 0.6, 2, 2); } else if (this.introDone) v.reveal.value = 50;
       // animation state from simulation state
       v.throwT -= dt; v.hitT -= dt; v.hold -= dt; const I = v.inst;
+      if (v.hitShell) { v.hitFlash = Math.max(0, (v.hitFlash ?? 0) - dt * 3.2); v.hitShell.visible = v.hitFlash > 0.01; (v.hitShell.material as THREE.MeshBasicMaterial).opacity = 0.55 * v.hitFlash; v.hitShell.scale.set(0.55 + 0.15 * (1 - v.hitFlash), 1.05 + 0.1 * (1 - v.hitFlash), 0.55 + 0.15 * (1 - v.hitFlash)); }
       if (v.hold > 0) { /* a staged one-shot is playing */ } else if (f.falling) I.play('Fall'); else if (f.hop || f.jumpT > 0) I.play('Jump'); else if (v.hitT > 0.12) I.play('HitAir', 0.1); else if (f.dodgeT > 0) I.play('Dodge', 0.06); else if (f.winding && I.actions.Throw) {
         // the wind-up scrubs the throw clip, so the arm reaches its release pose exactly as the disc leaves
         const a = I.actions.Throw; if (!v.scrub) { I.play('Throw', 0.12, true); v.scrub = true; } a.paused = true; a.time = this.releaseAt(I) * clamp(f.wind / Math.max(0.2, f.isPlayer ? 0.5 : f.arch.windup), 0, 1);
@@ -622,6 +637,8 @@ export class DiscSession extends BaseSession {
       if (this.v.y < py + 0.5) this.v.y = py + 0.5;
       this.camPos.x = this.v.x; this.camPos.z = this.v.z; this.camPos.y = damp(this.camPos.y, this.v.y, 14, dt);
       cam.position.copy(this.camPos); cam.lookAt(this.camPos.x + fx * 20, this.camPos.y + fyv * 20, this.camPos.z + fz * 20);
+      // falling: the camera stays at the rim and watches the body drop away into the void
+      if (this.fallCam > 0) { this.fallCam += dt; if (this.fallCam < 0.05) this.fallFrom.copy(cam.position); cam.position.copy(this.fallFrom); cam.lookAt(P.x, P.y + 0.9, P.z); }
       const tf = P.winding ? 50 : 56; if (Math.abs(cam.fov - tf) > 0.1) { cam.fov = damp(cam.fov, tf, 8, dt); cam.updateProjectionMatrix(); }
     }
     if (this.phase === 'outro' && sim.state === 'lost') { this.outroDur = 3.6; engine.derez = Math.max(0.22 * Math.exp(-this.t * 5) , smooth(clamp((this.t - 1.7) / 1.5, 0, 1)) * 0.97); engine.derezTarget = engine.derez; }

@@ -194,7 +194,8 @@ export class DiscSim {
       }
       if (d.collapse && this.collapseOn) {
         const c = d.collapse, ph = ((this.time / c.interval + c.phase) % 1) * c.interval;
-        const warnAt = c.interval - c.down - 1.6, downAt = c.interval - c.down;
+        // 2.6 s of warning before a deck drops: long enough to see the sign, hear the klaxon and hop clear
+        const warnAt = c.interval - c.down - 2.6, downAt = c.interval - c.down;
         const ns: Platform['state'] = ph >= downAt ? 'down' : ph >= warnAt ? 'warn' : 'up';
         if (ns !== p.state) { p.state = ns; this.events.push({ type: ns === 'warn' ? 'platformWarn' : ns === 'down' ? 'platformDown' : 'platformUp', index: i }); }
       } else if (p.state !== 'up') { p.state = 'up'; this.events.push({ type: 'platformUp', index: i }); }
@@ -685,7 +686,7 @@ export class DiscSim {
     p.integrity -= d.weapon === 'arc' ? 3 : 1;
     this.events.push({ type: 'deckHit', index: best, left: Math.max(0, p.integrity), x: d.x, y: p.y, z: d.z, team: d.team });
     if (p.integrity > 0 || !this.canDrop(best)) return;
-    p.gone = true; p.breakT = 1.4; p.state = 'warn';
+    p.gone = true; p.breakT = 2.0; p.state = 'warn';
     this.events.push({ type: 'platformWarn', index: best, breaking: true });
   }
 
