@@ -25,12 +25,16 @@ export function revealMaterials(root: THREE.Object3D, uni: { value: number }, gl
   root.traverse((o: any) => {
     if (!o.isMesh) return;
     for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-      m.onBeforeCompile = (sh: any) => {
+      // chained, not replaced: a hook set earlier (the cycles' crisp light lines, cleanLines in view.ts) used to be
+      // silently dropped here, so those machines rendered their soft painted glow instead
+      const prev = m.onBeforeCompile, prevKey = prev && m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey ? m.customProgramCacheKey.bind(m) : null;
+      m.onBeforeCompile = (sh: any, r: any) => {
+        prev?.call(m, sh, r);
         sh.uniforms.uReveal = uni; sh.uniforms.uRevealGlow = { value: glow }; sh.uniforms.uRim = { value: rim };
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vRY;').replace('#include <project_vertex>', '#include <project_vertex>\nvRY = (modelMatrix * vec4(transformed, 1.0)).y;');
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRY; uniform float uReveal, uRim; uniform vec3 uRevealGlow;').replace('#include <dithering_fragment>', 'if (vRY > uReveal) discard; gl_FragColor.rgb += uRevealGlow * smoothstep(0.22, 0.0, uReveal - vRY) * 3.0;\n' + (rim > 0 ? '#ifdef STANDARD\n gl_FragColor.rgb += uRevealGlow * pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 2.5) * uRim;\n#endif\n' : '') + '#include <dithering_fragment>');
       };
-      m.customProgramCacheKey = () => (rim > 0 ? 'reveal-rim' : 'reveal'); m.needsUpdate = true;
+      m.customProgramCacheKey = () => (prevKey ? prevKey() + '+' : '') + (rim > 0 ? 'reveal-rim' : 'reveal'); m.needsUpdate = true;
     }
   });
 }

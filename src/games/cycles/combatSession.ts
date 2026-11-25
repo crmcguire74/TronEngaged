@@ -127,8 +127,8 @@ export class CombatSession extends BaseSession {
   protected intro(k: number, dt: number) {
     const P = this.sim.player, cam = this.ctx.engine.camera, vfx = this.ctx.vfx;
     // vehicles assemble from particles, then their systems light up
-    this.sim.cycles.forEach((c, i) => { const t = clamp((k - 0.12 - i * 0.05) / 0.45, 0, 1); this.cv[i].reveal.value = -0.1 + t * 1.6; if (t > 0 && t < 1 && Math.random() < 0.7) vfx.motes(c.x, 0, c.z, this.colors[i], 1.4, 1.4, 4); if (t >= 1) this.cv[i].reveal.value = 50; });
-    this.start.update(this.t, dt);
+    this.sim.cycles.forEach((c, i) => { const t = clamp((k - 0.12 - i * 0.05) / 0.45, 0, 1); this.cv[i].reveal.value = -0.1 + t * 1.6; if (t >= 1) this.cv[i].reveal.value = 50; });
+    this.start.update(this.t, dt, this.xr ? (this.ctx.xr.actions.accel ?? 0) : 0);
     if (this.xr) return;
     const e = smooth(k), yaw = yawOf(P.dir), a = yaw + Math.PI + lerp(2.2, 0, e), r = lerp(22, this.cockpit ? 0.4 : 10, e), h = lerp(9, this.cockpit ? 1.3 : 4.6, e);
     this.camPos.set(P.x + Math.sin(a) * r, h, P.z + Math.cos(a) * r); cam.position.copy(this.camPos); cam.lookAt(P.x + Math.sin(yaw) * 8 * e, 1 + 0.3 * e, P.z + Math.cos(yaw) * 8 * e);
@@ -234,7 +234,7 @@ export class CombatSession extends BaseSession {
       // right stick up / down trims the seat, so the dash sits where the rider wants it
       const vs = this.ctx.settings.vr; if (first && xr.dashAdjust && this.phase !== 'intro') { vs.seat = clamp((vs.seat ?? 0) + xr.dashAdjust * 0.3 * dt, -0.35, 0.35); this.seatDirty = true; }
       rig.position.set(px - fx * back - off.x, up + (first ? vs.seat ?? 0 : vs.height) - this.offset.y, pz - fz * back - off.z);
-      hud.vrSeat = this.offset; xr.showHands = !first;
+      hud.vrSeat = this.offset; xr.showHands = !first || !!this.start?.handsFree;
       xr.update(dt, false); engine.vignetteAmount = this.ctx.settings.vr.vignette * clamp(sp01 * (first ? 0.6 : 0.3) + (P.boosting ? 0.2 : 0) + turning * 0.5, 0, 1) * (this.phase === 'play' ? 1 : 0);
     } else if (this.phase !== 'intro') {
       this.camYaw = angleLerp(this.camYaw, yaw, 1 - Math.exp(-(first ? 60 : 7.5) * dt)); const fx = Math.sin(this.camYaw), fz = Math.cos(this.camYaw);

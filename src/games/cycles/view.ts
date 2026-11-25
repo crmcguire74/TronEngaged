@@ -62,6 +62,44 @@ const TRIM_EMISSIVE = 0.9;
 const BLACK_GLASS = () => new THREE.MeshStandardMaterial({ name: 'Body', color: 0x010102, metalness: 0.2, roughness: 0.16, envMapIntensity: 1.0 });
 const ARM = 0.44, CANOPY_OPEN = -1.25, UP = new THREE.Vector3(0, 1, 0), LAMP_DIM = new THREE.Color();
 
+/** Shared uniforms for an ignition sweep: world-space origin and the radius the solid machine has reached. */
+export interface BuildUniforms { uBO: { value: THREE.Vector3 }; uBR: { value: number } }
+/** Radius large enough that nothing is ever outside it: the machine is simply whole. */
+const BUILT = 1e4;
+/**
+ * Ignition: the machine assembles outward from the rider's hands. Ahead of the front there is only a crawling 3D
+ * lattice of light (grid lines on every surface); behind it the panels are solid, with a bright seam at the front.
+ * Chained onto whatever the material already does, and compiled into its shader once, so it costs nothing when idle.
+ */
+export function buildMaterials(root: THREE.Object3D, u: BuildUniforms, color: number) {
+  const glow = { value: new THREE.Color(color).multiplyScalar(1.2) };
+  root.traverse((o: any) => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m || m.userData.build) continue; m.userData.build = true;
+      const prev = m.onBeforeCompile, prevKey = prev && m.customProgramCacheKey !== THREE.Material.prototype.customProgramCacheKey ? m.customProgramCacheKey.bind(m) : null;
+      m.onBeforeCompile = (sh: any, r: any) => {
+        prev?.call(m, sh, r); sh.uniforms.uBO = u.uBO; sh.uniforms.uBR = u.uBR; sh.uniforms.uBG = glow;
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vBW;').replace('#include <project_vertex>', '#include <project_vertex>\nvBW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vBW; uniform vec3 uBO, uBG; uniform float uBR;').replace('#include <dithering_fragment>',
+          `float bd = distance(vBW, uBO) - uBR;
+          if (bd > 0.0) { if (bd > 0.45) discard; vec3 gl = abs(fract(vBW * 10.0) - 0.5); if (max(max(gl.x, gl.y), gl.z) < 0.43) discard; gl_FragColor = vec4(uBG * (2.6 - bd * 4.0), 1.0); }
+          else gl_FragColor.rgb += uBG * smoothstep(0.16, 0.0, -bd) * 3.0;
+          #include <dithering_fragment>`);
+      };
+      m.customProgramCacheKey = () => (prevKey ? prevKey() + '+' : '') + 'build'; m.needsUpdate = true;
+    }
+  });
+}
+/** The ignition baton: a short black grip with lit ends and a core line, carried in the hand before the machine exists. */
+export function baton(color: number): THREE.Group {
+  const g = new THREE.Group(), lit = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.6) }), dark = new THREE.MeshStandardMaterial({ color: 0x050608, metalness: 0.6, roughness: 0.3 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.3, 12), dark); g.add(body);
+  for (const y of [-0.15, 0.15]) { const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.024, 12), lit); cap.position.y = y; g.add(cap); }
+  for (const a of [0, Math.PI]) { const line = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.24, 0.004), lit); line.position.set(Math.sin(a) * 0.0195, 0, Math.cos(a) * 0.0195); g.add(line); }
+  g.traverse((o: any) => { if (o.isMesh) o.castShadow = false; }); return g;
+}
+
 /** A cycle with its rider: supplied vehicle model, materialise effect, wheel/drive animation and cosmetic lean. */
 export class CycleView {
   readonly root = new THREE.Group(); readonly body = new THREE.Group(); readonly reveal = { value: 50 }; private inst: Instance; private rider: Instance | null = null; lean = 0; private yaw = 0; glow: THREE.Mesh; private cockpit: THREE.Object3D | null = null; private fp = false; private wheels: { o: THREE.Object3D; r: number }[] = []; private lastX = 0; private lastZ = 0; private placed = false; private trims: THREE.MeshStandardMaterial[] = []; private fireT = 0; private power = { value: 1 }; private riderKey = ''; private walker: Instance | null = null; private walkReveal = { value: -1 }; private walkT = 0; private wFrom = new THREE.Vector3(); private wTo = new THREE.Vector3();
@@ -69,6 +107,8 @@ export class CycleView {
   private gauges: HoloGauge[] = []; private dialV = [0, 0]; private rings: THREE.Object3D[] = [];
   /** Distance LOD: a geometry-only low-detail copy sharing this machine's materials, and the rider dropped when far. */
   private lod: Instance | null = null; private lodOn = false; private riderFar = false; private riderWanted = true;
+  /** Ignition sweep state (see buildMaterials). `built` turns true when the machine is whole. */
+  readonly buildU: BuildUniforms = { uBO: { value: new THREE.Vector3() }, uBR: { value: BUILT } }; private buildT = -1; built = true; private batonObj: THREE.Object3D | null = null;
   private gloves: { g: GloveHand; pivot: THREE.Group; wrist: THREE.Object3D; arm: THREE.Mesh; axis: THREE.Vector3; elbow: THREE.Vector3; side: number }[] = []; private steerV = 0; private yokeY = 0; private throttleV = 0; private brakeV = 0; private tv = new THREE.Vector3(); private tv2 = new THREE.Vector3();
   /** False while the rider is still on foot during the start sequence. */ mounted = true;
   /** Before the start: engine idling, canopy open where the model has one. */ parked = false;
@@ -101,7 +141,24 @@ export class CycleView {
     // old back-face outline was a second skinned copy of every body, which doubled the riders' cost
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, map: glowTex() })); this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.03;
     this.root.add(this.body, this.glow);
+    buildMaterials(this.inst.root, this.buildU, color); if (this.lod) buildMaterials(this.lod.root, this.buildU, color);
   }
+  /** Hides the machine until ignition (the rider is on foot with a baton). */
+  unbuilt() { this.built = false; this.buildT = -1; this.buildU.uBR.value = -1; this.glow.visible = false; }
+  /** Fires the build sweep from a world point (the rider's hands, or the headset's throwing hand). */
+  ignite(from?: THREE.Vector3) {
+    if (this.buildT >= 0 || this.built) return; this.buildT = 0; this.buildU.uBR.value = 0;
+    this.buildU.uBO.value.copy(from ?? this.root.localToWorld(this.tv.set(0, 0.98, 0.32)));
+    const { vfx, audio } = this.ctx, o = this.buildU.uBO.value; vfx.ring(o.x, o.y, o.z, this.color, 0.05, 2.6, 0.5); vfx.sparks(o.x, o.y, o.z, this.color, 40, 5, 0.5, undefined, 0, 0.5);
+    audio.sfx('spawn', this.fp ? undefined : { x: o.x, y: o.y, z: o.z }); this.batonObj?.removeFromParent(); this.batonObj = null;
+  }
+  private stepBuild(dt: number) {
+    if (this.buildT < 0) return; this.buildT += dt; const k = Math.min(1, this.buildT / 1.15), e = 1 - Math.pow(1 - k, 2.2);
+    this.buildU.uBR.value = e * 4.6; this.glow.visible = !this.fp && e > 0.4;
+    if (k >= 1) { this.buildT = -1; this.built = true; this.buildU.uBR.value = BUILT; this.glow.visible = !this.fp; }
+  }
+  /** Puts a baton in a hand (a bone of the walker, or a tracked glove in a headset). */
+  holdBaton(parent: THREE.Object3D, worldScale = 1) { const b = baton(this.color); b.scale.setScalar(1 / worldScale); parent.add(b); this.batonObj = b; return b; }
   setRiderVisible(v: boolean) { this.riderWanted = v; this.syncRider(); }
   private syncRider() { if (this.rider) this.rider.root.visible = this.riderWanted && !this.fp && this.mounted && !this.riderFar; }
   /** Start sequence: the rider begins on foot, ahead of and beside the machine (call after the machine is posed). */
@@ -110,19 +167,23 @@ export class CycleView {
     const w = (this.walker = this.ctx.assets.instance(this.riderKey, { cloneMaterials: true })); revealMaterials(w.root, this.walkReveal, new THREE.Color(this.color));
     for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = w.root.getObjectByName(n); if (o) o.visible = false; }
     const p = this.root.position, fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), lx = fz * side, lz = -fx * side;
-    this.wFrom.set(p.x + lx * 4.2 + fx * 1.6, p.y, p.z + lz * 4.2 + fz * 1.6); this.wTo.set(p.x + lx * 0.95, p.y, p.z + lz * 0.95);
+    // the rider jogs onto the empty mark where the machine will form, baton in hand
+    this.wFrom.set(p.x + lx * 4.6 + fx * 1.2, p.y, p.z + lz * 4.6 + fz * 1.2); this.wTo.set(p.x, p.y, p.z);
     w.root.position.copy(this.wFrom); w.root.rotation.y = Math.atan2(this.wTo.x - this.wFrom.x, this.wTo.z - this.wFrom.z); w.play('Idle', 0); this.root.parent?.add(w.root);
+    const hand = w.root.getObjectByName('RightHand'); if (hand) { w.root.updateMatrixWorld(true); const b = this.holdBaton(hand, hand.getWorldScale(this.tv).x || 1); b.rotation.set(0, 0, Math.PI / 2); b.position.set(0, 0.08 / (hand.getWorldScale(this.tv).x || 1), 0); }
+    this.unbuilt();
   }
   /** Advances the walk to the machine (k: 0..1). Returns true on the frame the rider mounts. */
   walk(k: number, dt: number): boolean {
     const w = this.walker; if (!w || this.mounted) return false; if (!w.root.parent) this.root.parent?.add(w.root);
     this.walkT += dt; this.walkReveal.value = this.walkT > 0.6 ? 50 : this.wFrom.y - 0.2 + (this.walkT / 0.6) * 2.4;
     const e = k * k * (3 - 2 * k); w.root.position.lerpVectors(this.wFrom, this.wTo, e); const moving = k > 0.01 && k < 0.985;
-    w.play(moving ? 'Walk' : 'Idle', 0.2); if (moving && w.actions.Walk) w.actions.Walk.timeScale = 0.6 + 2.4 * k * (1 - k) * 1.6; w.mixer?.update(dt);
+    const gait = w.actions.Run ? 'Run' : 'Walk'; w.play(moving ? gait : 'Idle', 0.2); if (moving && w.actions[gait]) w.actions[gait].timeScale = 0.5 + 1.6 * k * (1 - k) * 1.6; w.mixer?.update(dt);
     return k >= 1 ? this.finishWalk() : false;
   }
   /** Seats the rider at once (the walk finished, or the start sequence was skipped). */
-  finishWalk(): boolean { if (this.mounted) return false; this.mounted = true; this.walker?.root.removeFromParent(); this.walker = null; this.syncRider(); return true; }
+  finishWalk(): boolean { if (this.mounted) return false; this.mounted = true; this.walker?.root.removeFromParent(); this.walker = null; this.syncRider(); this.ignite(); return true; }
+  get hasWalker() { return !!this.walker; }
   /**
    * First-person mode swaps the exterior model for the purpose-built cockpit: clean sight lines, no canopy glass in
    * front of the eyes, and the HUD rendered on the dash screen.
@@ -161,7 +222,7 @@ export class CycleView {
       this.cockpit = c; this.root.add(c);
     }
     if (this.cockpit) this.cockpit.visible = on;
-    this.inst.root.visible = !on && !this.lodOn; if (this.lod) this.lod.root.visible = !on && this.lodOn; this.glow.visible = !on; this.syncRider();
+    this.inst.root.visible = !on && !this.lodOn; if (this.lod) this.lod.root.visible = !on && this.lodOn; this.glow.visible = !on && this.built; this.syncRider();
   }
   /**
    * The Blender-built cockpit (scripts/blender/build_cockpit_v4.py, falling back to v3 / v2): a wrap-around binnacle
@@ -228,7 +289,7 @@ export class CycleView {
       arm.castShadow = false; c.add(arm);
       this.gloves.push({ g, pivot, wrist, arm, axis: along, elbow: new THREE.Vector3(sx * G.elbow[0], G.elbow[1], G.elbow[2]), side: sx });
     }
-    this.driveArms(); return c;
+    buildMaterials(c, this.buildU, this.color); this.driveArms(); return c;
   }
   private poseCanopy() { if (this.canopy) { const e = this.canopyK * this.canopyK * (3 - 2 * this.canopyK); this.canopy.rotation.x = (1 - e) * CANOPY_OPEN; } }
   private driveArms() {
@@ -273,7 +334,7 @@ export class CycleView {
   /** yaw: heading (0 = +z). snap=true applies heading instantly (classic 90° turns). */
   pose(x: number, y: number, z: number, yaw: number, dt: number, speed01: number, snap = false, pitch = 0) {
     if (this.wheels.length) { const d = this.placed ? Math.min(3, Math.hypot(x - this.lastX, z - this.lastZ)) : 0; for (const w of this.wheels) w.o.rotation.x += d / w.r; this.lastX = x; this.lastZ = z; this.placed = true; }
-    this.root.position.set(x, y, z); this.yaw = snap ? yaw : angleLerp(this.yaw, yaw, 1 - Math.exp(-18 * dt)); this.root.rotation.y = this.yaw;
+    this.root.position.set(x, y, z); this.yaw = snap ? yaw : angleLerp(this.yaw, yaw, 1 - Math.exp(-18 * dt)); this.root.rotation.y = this.yaw; this.stepBuild(dt);
     this.lean = damp(this.lean, 0, snap ? 7 : 0, dt); this.body.rotation.z = this.lean; this.body.rotation.x = pitch; if (this.cockpit) this.cockpit.rotation.x = pitch;
     this.fireT -= dt;
     if (this.canopy && this.canopyK !== this.canopyTarget) { if (!this.canopyMoving && this.fp) this.ctx.audio.sfx('canopy'); this.canopyMoving = true; this.canopyK = this.canopyTarget > this.canopyK ? Math.min(this.canopyTarget, this.canopyK + dt / 0.9) : Math.max(this.canopyTarget, this.canopyK - dt / 0.9); this.poseCanopy(); } else this.canopyMoving = false;
@@ -369,22 +430,40 @@ export class SpeedLines {
 }
 
 /**
- * Start of a cycle event: riders walk to their machines and mount in a burst of light. In a headset the player watches
- * their own rider from beside the machine, then is faded into the seat (the view never moves while it is visible).
+ * Start of a cycle event. Every rider jogs onto an empty mark carrying a light baton; on arrival the machine ignites
+ * out of their hands as a lattice of light and solidifies around them. In a headset the player is already in the seat:
+ * the baton is in their own throwing hand, and the machine forms around them when they squeeze (or on the count).
  */
 export class StartSequence {
-  seated: boolean; private seatT = 0; private called = false; private tmp = new THREE.Vector3();
-  constructor(private ctx: Ctx, private cv: CycleView[], private colors: number[], private player: number) { this.seated = !ctx.xr.presenting; cv.forEach((v, i) => v.dismount(i === player ? 1 : -1)); }
-  /** t: seconds since the intro began. */
-  update(t: number, dt: number) { const k = clamp((t - 0.3) / 2.4, 0, 1); this.cv.forEach((v, i) => { if (v.walk(k, dt)) this.onMount(i); }); }
+  seated: boolean; private seatT = 0; private called = false; private tmp = new THREE.Vector3(); private vrBaton = false; private prompt = false;
+  constructor(private ctx: Ctx, private cv: CycleView[], private colors: number[], private player: number) {
+    const xr = ctx.xr.presenting; this.seated = true;
+    cv.forEach((v, i) => { if (xr && i === player) { v.unbuilt(); this.vrBaton = true; } else v.dismount(i === player ? 1 : -1); if (!v.hasWalker && !(xr && i === player)) v.unbuilt(); });
+    if (this.vrBaton) { const xm = ctx.xr; cv[player].holdBaton(xm.handAnchor(xm.dominant)).rotation.set(Math.PI / 2, 0, 0); }
+  }
+  /** t: seconds since the intro began; squeeze: the headset's trigger/grip (0..1). */
+  update(t: number, dt: number, squeeze = 0) {
+    const k = clamp((t - 0.3) / 2.4, 0, 1);
+    this.cv.forEach((v, i) => {
+      if (v.walk(k, dt)) this.onMount(i);
+      // machines without a rider on foot (the sealed pod, the player's in a headset) ignite on their own cue
+      else if (!v.built && !v.hasWalker && !(this.vrBaton && i === this.player) && k > 0.55 + i * 0.03) { v.ignite(); this.onMount(i); }
+    });
+    if (this.vrBaton && !this.cv[this.player].built && t > 0.9) {
+      if (!this.prompt) { this.prompt = true; this.ctx.hud.coach('SQUEEZE TO IGNITE YOUR CYCLE'); }
+      if (squeeze > 0.6 || k >= 1) this.igniteVR();
+    }
+  }
+  private igniteVR() { if (!this.vrBaton) return; this.vrBaton = false; const xm = this.ctx.xr, at = xm.handAnchor(xm.dominant).getWorldPosition(this.tmp); this.cv[this.player].ignite(at.clone()); this.ctx.hud.coach(null); xm.pulse('both', 0.9, 260); this.onMount(this.player); }
   /** Everyone mounted and the player seated: called when the countdown begins, however the intro ended. */
-  finish() { this.cv.forEach((v, i) => { if (v.finishWalk()) this.onMount(i); }); this.seat(); }
+  finish() { this.cv.forEach((v, i) => { if (v.finishWalk()) this.onMount(i); else if (!v.built && !(this.vrBaton && i === this.player)) { v.ignite(); } }); this.igniteVR(); }
+  /** True while the player's hands are still free (holding the baton) rather than on the grips. */
+  get handsFree() { return this.vrBaton || !this.cv[this.player].built; }
   tick(dt: number) { if (this.seatT > 0) { this.seatT -= dt; if (this.seatT <= 0) { this.seated = true; this.ctx.engine.fadeTo(0, 3); } } }
-  private seat() { if (this.seated || this.seatT > 0) return; if (this.ctx.xr.presenting) { this.ctx.engine.fadeTo(1, 12); this.seatT = 0.22; } else this.seated = true; }
   private onMount(i: number) {
     const { vfx, audio } = this.ctx, p = this.cv[i].root.position, col = this.colors[i];
-    vfx.motes(p.x, p.y, p.z, col, 1.2, 1.8, 30); vfx.ring(p.x, p.y + 0.05, p.z, col, 0.3, 2.2, 0.5);
-    if (i === this.player) { audio.sfx('spawn'); this.seat(); }
+    vfx.motes(p.x, p.y, p.z, col, 1.4, 2.2, 10); vfx.ring(p.x, p.y + 0.05, p.z, col, 0.3, 2.6, 0.6);
+    if (i === this.player) audio.sfx('spawn');
     else if (!this.called) { this.called = true; audio.vo('jeer_intro', 'Rival: "Prepare yourself."', { x: p.x, y: p.y + 1.4, z: p.z }, 0.9); }
     else audio.sfx('spawn', { x: p.x, y: p.y + 1, z: p.z });
   }
