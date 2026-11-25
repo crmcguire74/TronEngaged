@@ -16,6 +16,7 @@ export function buildDiscArena(t: TierDefinition, seed: number): ArenaDef {
     collapsing: has(t, 'collapsing') || !!t.params.collapseLater, shifting: (has(t, 'shifting') || has(t, 'rapid-shift') || !!t.params.shiftCapable) && relax < 1,
     barriers: has(t, 'barriers') ? num(t, 'barriers', 2) : 0, rotating: has(t, 'rotating-shields') ? num(t, 'rotating', 1) : 0,
     volatile: has(t, 'volatile') ? num(t, 'volatile', 2) : 0, cover: has(t, 'cover') ? 1 : 0, midwall: has(t, 'midwall'),
+    layout: has(t, 'maze') ? 'maze' : has(t, 'open-floor') ? 'open' : 'decks',
   }, new Rng(seed));
   // validated before the player enters; relax decorative complexity if a generated layout fails
   for (let relax = 0; relax < 3; relax++) { const a = mk(relax); if (!validateArena(a).length) return a; }

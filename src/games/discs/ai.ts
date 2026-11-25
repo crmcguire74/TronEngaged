@@ -107,7 +107,12 @@ export function aiThink(sim: DiscSim, f: Fighter, dt: number): DiscIntent {
   }
   // --- positioning on the platform
   ai.moveT -= dt;
-  if (ai.moveT <= 0) { const a = sim.rng.range(0, Math.PI * 2), r = sim.rng.range(0, p.r * 0.62); ai.tx = Math.cos(a) * r; ai.tz = Math.sin(a) * r; ai.moveT = sim.rng.range(0.7, 2.2) / (0.6 + arch.speed * 0.12); }
+  if (ai.moveT <= 0) {
+    const a = sim.rng.range(0, Math.PI * 2), r = sim.rng.range(0, p.r * 0.62); ai.tx = Math.cos(a) * r; ai.tz = Math.sin(a) * r; ai.moveT = sim.rng.range(0.7, 2.2) / (0.6 + arch.speed * 0.12);
+    // in a maze a rival hides between throws: of a few spots on its deck, it takes one the player cannot see, and
+    // steps out of it to throw (attacking clears the hold below)
+    if (sim.maze && ai.cooldown > 0.6) { const P = sim.player; for (let k = 0; k < 6; k++) { const aa = sim.rng.range(0, Math.PI * 2), rr = sim.rng.range(p.r * 0.2, p.r * 0.8), hx = Math.cos(aa) * rr, hz = Math.sin(aa) * rr; if (sim.blocked(P.x, P.y + 1.3, P.z, p.x + hx, p.y + 1.3, p.z + hz)) { ai.tx = hx; ai.tz = hz; ai.moveT *= 1.6; break; } } }
+  }
   if (!it.dodge) { const gx = p.x + ai.tx - f.x, gz = p.z + ai.tz - f.z, gl = Math.hypot(gx, gz); if (gl > 0.25) { const k = Math.min(1, gl); it.mx = (gx / gl) * k; it.mz = (gz / gl) * k; } }
 
   // --- specials

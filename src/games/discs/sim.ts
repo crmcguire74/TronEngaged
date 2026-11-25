@@ -78,6 +78,7 @@ export class DiscSim {
   /** Power nodes ('pickups' tiers) and the charge the next throw carries. */ nodes: PowerNode[] = []; nodeT = 6; buff: '' | 'split' | 'pierce' = '';
   core: Core | null = null;
   /** Cutter tiers: rival discs leave a beam that cuts whoever crosses it; the player can only be cut once per window. */ private cutter = false; private cutCd = 0;
+  /** Maze tiers: rivals take cover between throws (see ai.ts). */ maze = false;
   private nextId = 1; private ambientInterfere = 0;
   player!: Fighter;
 
@@ -93,7 +94,7 @@ export class DiscSim {
     this.shiftTimer = this.shiftAuto;
     this.ambientInterfere = cfg.modifiers.includes('interference') ? 14 : 0;
     if (cfg.modifiers.includes('amp')) { const n = cfg.modifiers.includes('amp-3') ? 3 : 2; for (let i = 0; i < n; i++) { const bx = n === 3 ? (i - 1) * 7 : (i ? 4.5 : -4.5); this.amps.push({ x: bx, y: 2.3 + (i % 2) * 0.9, z: 3.2, r: 1.25, bx, sway: n === 3 ? 1.6 : 2.6, phase: i * 2.2, flash: 0 }); } }
-    this.cutter = cfg.modifiers.includes('cutter');
+    this.cutter = cfg.modifiers.includes('cutter'); this.maze = cfg.modifiers.includes('maze');
     if (cfg.modifiers.includes('core')) { const A = cfg.arena; this.core = { x: 0, y: 7.5, z: -(A.radius - 3.2), hp: 6, max: 6, rot: 0, spin: 0.6, gap: 1.5, flash: 0 }; }
     const home = this.platforms.findIndex((p) => p.side === 0);
     const P = this.platforms[home];
@@ -283,6 +284,13 @@ export class DiscSim {
     if (od > lim) {
       if (knocked && od > p.r + 0.15 && !f.arch.boss) { this.startFall(f, 'knock'); return; }
       if (!knocked || f.arch.boss) { f.x = p.x + (ox / od) * lim; f.z = p.z + (oz / od) * lim; }
+    }
+    // maze pillars are solid to bodies: push a fighter out of any pillar it walks into (circle against the pillar's box)
+    for (const b of this.barriers) {
+      if (!b.alive || !b.def.pillar || f.y > b.y + b.def.hy || f.y + 1.8 < b.y - b.def.hy) continue;
+      const c = Math.cos(b.yaw), s = Math.sin(b.yaw), rx = f.x - b.x, rz = f.z - b.z, lx = rx * c - rz * s, lz = rx * s + rz * c;
+      const qx = clamp(lx, -b.def.hx, b.def.hx), qz = clamp(lz, -b.def.hz, b.def.hz), dx = lx - qx, dz = lz - qz, d = Math.hypot(dx, dz);
+      if (d < FIGHTER_R) { const nlx = d > 1e-5 ? dx / d : 1, nlz = d > 1e-5 ? dz / d : 0, pen = FIGHTER_R - d; f.x += (nlx * c + nlz * s) * pen; f.z += (-nlx * s + nlz * c) * pen; }
     }
     // gentle separation between allies sharing a platform
     if (!f.isPlayer) for (const o of this.fighters) if (o !== f && o.alive && o.team === f.team && o.platform === f.platform) { const sx = f.x - o.x, sz = f.z - o.z, sd = Math.hypot(sx, sz); if (sd < 1.3 && sd > 0.001) { f.x += (sx / sd) * (1.3 - sd) * 0.5; f.z += (sz / sd) * (1.3 - sd) * 0.5; } }

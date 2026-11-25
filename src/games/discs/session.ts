@@ -3,7 +3,7 @@ import { BaseSession, ctl, type Ctx, type SessionResult } from '../../app/contex
 import type { Actions } from '../../input/input';
 import type { Instance } from '../../engine/assets';
 import { CITY_PANO, PANORAMA, lodChar, tuneEmissive } from '../../engine/assets';
-import { Crowd, gridFloor, hardlight, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
+import { Crowd, edgeBlock, gridFloor, hardlight, lights, skyDome, suppliedSky, theme, type Theme } from '../../engine/env';
 import { Ribbon } from '../../engine/vfx';
 import { Ambient } from '../../engine/ambient';
 import { ArenaFrames } from './setpieces';
@@ -59,6 +59,18 @@ function reticle(): THREE.CanvasTexture {
  * escalates with the tier: a serrated ring early, a triangle from tier 11, a four-point star from tier 21 and on
  * every boss. Geometry is built once per form and shared.
  */
+/**
+ * A wide hexagonal deck: a dark slab with a bevelled lit rim, two inset hex rings and spokes of light from the centre,
+ * so a wide arena reads as a different kind of place from the floating discs. A few hundred triangles.
+ */
+function hexDeck(r: number, color: number): THREE.Group {
+  const g = new THREE.Group(), lit = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.4) }), dim = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(0.55) });
+  const slab = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.9, 0.9, 6, 1), new THREE.MeshStandardMaterial({ color: 0x06080c, metalness: 0.6, roughness: 0.4 })); slab.position.y = -0.47; slab.rotation.y = Math.PI / 6; g.add(slab);
+  const ring = (rr: number, w: number, m: THREE.Material, y: number) => { const t = new THREE.Mesh(new THREE.TorusGeometry(rr, w, 4, 6), m); t.rotation.x = Math.PI / 2; t.rotation.z = Math.PI / 6; t.position.y = y; g.add(t); };
+  ring(r - 0.06, 0.07, lit, 0.0); ring(r * 0.66, 0.035, dim, 0.01); ring(r * 0.33, 0.035, dim, 0.01);
+  for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2, sp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, r * 0.94), dim); sp.position.set(Math.sin(a) * r * 0.47, 0.012, Math.cos(a) * r * 0.47); sp.rotation.y = a; g.add(sp); }
+  return g;
+}
 let hazardTex: THREE.CanvasTexture | null = null;
 /** Hazard sign for a failing deck: a red-rimmed warning triangle with a down arrow. */
 function hazardSign(): THREE.CanvasTexture {
@@ -161,7 +173,9 @@ export class DiscSession extends BaseSession {
     // platforms: supplied pedestal model sized to each analytic collision disc
     this.sim.platforms.forEach((p) => {
       const root = new THREE.Group(); const col = p.side === 0 ? ION : th.accent2 === ION ? 0xff8a3c : th.accent2;
-      if (ctx.assets.has('pedestal')) { const m = ctx.assets.instance('pedestal', { cloneMaterials: true }).root; tuneEmissive(m, 0.09); m.traverse((o: any) => { if (o.isMesh) { o.material.color.multiplyScalar(0.22); o.material.roughness = Math.max(0.35, o.material.roughness ?? 0.5); } }); m.scale.setScalar(p.r / 12.39 * 1.04); m.traverse((o: any) => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = false; } }); root.add(m); }
+      // wide arenas stand on hexagonal slabs, not the round pedestals: a different place, not a bigger copy of the same one
+      if (p.r > 8) root.add(hexDeck(p.r, p.side === 0 ? ION : th.accent2));
+      else if (ctx.assets.has('pedestal')) { const m = ctx.assets.instance('pedestal', { cloneMaterials: true }).root; tuneEmissive(m, 0.09); m.traverse((o: any) => { if (o.isMesh) { o.material.color.multiplyScalar(0.22); o.material.roughness = Math.max(0.35, o.material.roughness ?? 0.5); } }); m.scale.setScalar(p.r / 12.39 * 1.04); m.traverse((o: any) => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = false; } }); root.add(m); }
       else { const m = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r * 0.8, 0.8, 40), frameMat); m.position.y = -0.4; m.receiveShadow = true; root.add(m); }
       const ring = new THREE.Mesh(new THREE.TorusGeometry(p.r - 0.12, 0.06, 6, 72), new THREE.MeshBasicMaterial({ color: col })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; root.add(ring);
       const surge = new THREE.Mesh(new THREE.CircleGeometry(p.r - 0.3, 48), new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); surge.rotation.x = -Math.PI / 2; surge.position.y = 0.06; root.add(surge);
@@ -201,7 +215,8 @@ export class DiscSession extends BaseSession {
   }
   private addBarrierView(i: number) {
     const b = this.sim.barriers[i], d = b.def; let obj: THREE.Object3D;
-    if (d.volatile) {
+    if (d.pillar) obj = edgeBlock(d.hx * 2, d.hy * 2, d.hz * 2, this.th.accent);
+    else if (d.volatile) {
       const g = new THREE.Group(); const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.75), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff5533).multiplyScalar(2) }));
       const shell = new THREE.Mesh(new THREE.OctahedronGeometry(1.15), new THREE.MeshBasicMaterial({ color: 0xffd0a0, wireframe: true, transparent: true, opacity: 0.8 })); g.add(core, shell); obj = g;
     } else {
@@ -525,7 +540,7 @@ export class DiscSession extends BaseSession {
       (v.beam.material as THREE.MeshBasicMaterial).opacity = target ? 0.3 : 0.07; if (target) rm.color.setHex(0xffffff);
     });
     sim.amps.forEach((a, i) => { const v = this.av[i]; if (!v) return; v.g.position.set(a.x, a.y, a.z); v.g.rotation.z = t * 0.6 + i; const k = a.flash / 0.5; v.g.scale.setScalar(1 + 0.25 * k); v.fill.opacity = 0.07 + 0.04 * Math.sin(t * 3 + i) + 0.4 * k; const base = sim.cfg.arena.floor, h = a.y - 1.25 - base; v.mast.scale.y = Math.max(0.01, h); v.mast.position.set(a.x, base + h / 2, a.z); });
-    sim.barriers.forEach((b, i) => { const o = this.bv[i]; if (!o) return; o.visible = b.alive; if (!b.alive) return; o.position.set(b.x, b.y, b.z); o.rotation.y = b.yaw; if (b.def.volatile) { o.rotation.x = t * 0.9; o.scale.setScalar(1 + 0.12 * Math.sin(t * 7)); } else { const m = (o.children[0] as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms.uFlash.value = Math.max(m.uniforms.uFlash.value, b.flash > 0 ? 0.5 : 0); if (b.def.hp > 0) m.uniforms.uOpacity.value = 0.2 + 0.35 * (b.hp / b.def.hp); } });
+    sim.barriers.forEach((b, i) => { const o = this.bv[i]; if (!o) return; o.visible = b.alive; if (!b.alive) return; o.position.set(b.x, b.y, b.z); o.rotation.y = b.yaw; if (b.def.volatile) { o.rotation.x = t * 0.9; o.scale.setScalar(1 + 0.12 * Math.sin(t * 7)); } else if (!b.def.pillar) { const m = (o.children[0] as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms.uFlash.value = Math.max(m.uniforms.uFlash.value, b.flash > 0 ? 0.5 : 0); if (b.def.hp > 0) m.uniforms.uOpacity.value = 0.2 + 0.35 * (b.hp / b.def.hp); } });
     // fighters
     for (const f of sim.fighters) {
       const v = this.fv.get(f.id); if (!v) continue;

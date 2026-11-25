@@ -91,3 +91,25 @@ describe('cutter beams', () => {
     const plain = arena([]); flyThrough(plain); for (let i = 0; i < 0.6 / DT; i++) plain.step(DT, emptyIntent()); expect(plain.discs.every((d) => !d.beam?.length)).toBe(true);
   });
 });
+
+describe('wide arenas', () => {
+  const mazeTier = () => DISC_TIERS.find((t) => t.modifiers.includes('maze'))!;
+  it('builds one wide deck a side for open and maze tiers, with pillars only in the maze', async () => {
+    const { buildDiscConfig } = await import('../progression/build');
+    const open = buildDiscConfig(DISC_TIERS.find((t) => t.modifiers.includes('open-floor'))!, 'standard').arena, maze = buildDiscConfig(mazeTier(), 'standard').arena;
+    for (const a of [open, maze]) { expect(a.platforms).toHaveLength(2); expect(a.platforms.every((p) => p.r > 8)).toBe(true); }
+    expect(open.barriers.some((b) => b.pillar)).toBe(false); expect(maze.barriers.filter((b) => b.pillar).length).toBeGreaterThanOrEqual(10);
+  });
+  it('stops a fighter walking into a pillar', async () => {
+    const { buildDiscConfig } = await import('../progression/build');
+    const sim = new DiscSim(buildDiscConfig(mazeTier(), 'standard')); const P = sim.player, pil = sim.barriers.find((b) => b.def.pillar && Math.abs(b.z - P.z) < 11)!;
+    P.x = pil.x - 3; P.z = pil.z; const it = emptyIntent(); it.mx = 1; it.mz = 0;
+    for (let i = 0; i < 2 / DT; i++) { sim.step(DT, it); const c = Math.cos(pil.yaw), s = Math.sin(pil.yaw), rx = P.x - pil.x, rz = P.z - pil.z, lx = rx * c - rz * s, lz = rx * s + rz * c; expect(Math.abs(lx) < pil.def.hx && Math.abs(lz) < pil.def.hz).toBe(false); }
+  });
+  it('sends maze rivals to cover the player cannot see', async () => {
+    const { buildDiscConfig } = await import('../progression/build');
+    const sim = new DiscSim(buildDiscConfig(mazeTier(), 'standard')); expect(sim.maze).toBe(true);
+    let hidden = 0, samples = 0; for (let i = 0; i < 12 / DT; i++) { sim.step(DT, emptyIntent()); if (i % 60 === 0) for (const f of sim.fighters) if (f.team === 1 && f.alive && f.ai && f.ai.cooldown > 0.6) { samples++; const p = sim.platforms[f.platform]; if (sim.blocked(sim.player.x, sim.player.y + 1.3, sim.player.z, p.x + f.ai.tx, p.y + 1.3, p.z + f.ai.tz)) hidden++; } }
+    expect(samples).toBeGreaterThan(0); expect(hidden / samples).toBeGreaterThan(0.3);
+  });
+});

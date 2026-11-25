@@ -76,7 +76,9 @@ describe('combat rules', () => {
     const { sim, P } = setup(); const it = emptyIntent(); it.mx = 1; run(sim, it, 4); const p = sim.platforms[P.platform]; expect(Math.hypot(P.x - p.x, P.z - p.z)).toBeLessThanOrEqual(p.r); expect(P.falling).toBe(false);
   });
   it('platform hops only select a reachable platform of the same side in the pushed direction', () => {
-    const sim = new DiscSim(buildDiscConfig(DISC_TIERS[12], 'standard')); const P = sim.player, start = P.platform;
+    // a tier with several hoppable decks a side (the wide open-floor and maze arenas have one)
+    const hopTier = DISC_TIERS.find((t) => Number(t.params.playerPlatforms) >= 2 && !t.modifiers.includes('open-floor') && !t.modifiers.includes('maze') && t.id >= 10)!;
+    const sim = new DiscSim(buildDiscConfig(hopTier, 'standard')); const P = sim.player, start = P.platform;
     expect(sim.tryHop(P, 0, -1)).toBe(false); // toward the rival side: no platform of ours there
     const mine = sim.platforms.map((p, i) => ({ p, i })).filter((e) => e.p.side === 0 && e.i !== start); const tgt = mine[0]; const dx = tgt.p.x - P.x, dz = tgt.p.z - P.z, l = Math.hypot(dx, dz);
     expect(sim.tryHop(P, dx / l, dz / l)).toBe(true); run(sim, emptyIntent(), 1); expect(sim.platforms[P.platform].side).toBe(0); expect(P.platform).not.toBe(start);
