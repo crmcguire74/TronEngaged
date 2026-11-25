@@ -115,6 +115,7 @@ export class DiscSession extends BaseSession {
     });
     this.sim.barriers.forEach((_, i) => this.addBarrierView(i));
     this.sim.amps.forEach(() => this.addAmpView());
+    if (this.sim.core) this.buildCore();
     for (const f of this.sim.fighters) this.addFighter(f);
     // VR: the held disc sits in the tracked throwing hand
     this.vrDisc = ctx.assets.instance('disc:azure').root; this.vrDisc.visible = false; this.vrDisc.userData.shared = true;
@@ -171,6 +172,42 @@ export class DiscSession extends BaseSession {
     const fvv: FighterView = { id: f.id, inst, root, reveal, marker, markerCtx, markerTex, hpShown: -1, shield, tell, tellT: 0, tellDur: 1, throwT: 0, hitT: 0, props, ring, height: 1.85 * f.arch.scale, late: false, hold: 0, greeted: false, deathT: 0 };
     this.fv.set(f.id, fvv); inst.play('Idle', 0);
     for (const id of f.discIds) this.addDisc(id, f);
+  }
+  // ---------------------------------------------------------------- core breach and power nodes
+  private seenNode = false;
+  private coreV: { root: THREE.Group; shell: THREE.Group; core: THREE.Mesh; coreMat: THREE.MeshBasicMaterial; halo: THREE.Mesh; pips: THREE.MeshBasicMaterial[] } | null = null;
+  private nodeV = new Map<number, { g: THREE.Group; kind: string }>();
+  /**
+   * The core: a white-hot sphere inside a ring shield of hardlight slats with one open gap, turning slowly. A beam drops
+   * from it, and six pips under it count down what is left.
+   */
+  private buildCore() {
+    const c = this.sim.core!, root = new THREE.Group(), shell = new THREE.Group(), col = this.th.accent2;
+    const coreMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff) }); const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.3, 2), coreMat);
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(1.7, 20, 14), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })); root.add(core, halo);
+    // slats fill the circle except the gap, which is centred on local +X (the sim measures the gap from +X)
+    const slat = hardlight(col, 0.42, 1.4, 0.03); this.timed.push(slat); const N = 26, gap = c.gap;
+    for (let i = 0; i < N; i++) { const a = gap / 2 + (i + 0.5) * ((Math.PI * 2 - gap) / N); const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.6, ((Math.PI * 2 - gap) / N) * 2.5 * 0.86), slat); m.position.set(Math.cos(a) * 2.5, 0, Math.sin(a) * 2.5); m.rotation.y = -a; shell.add(m); }
+    for (const y of [-1.85, 1.85]) { const r = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.05, 6, 64, Math.PI * 2 - gap), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.4) })); r.rotation.x = Math.PI / 2; r.rotation.z = gap / 2; r.position.y = y; shell.add(r); }
+    // gap markers: two bright posts either side of the opening, so it reads as a doorway at any distance
+    for (const sgn of [-1, 1]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 4.2, 0.16), new THREE.MeshBasicMaterial({ color: 0xffffff })); post.position.set(Math.cos(sgn * gap / 2) * 2.5, 0, Math.sin(sgn * gap / 2) * 2.5); shell.add(post); }
+    root.add(shell);
+    const pips: THREE.MeshBasicMaterial[] = []; for (let i = 0; i < c.max; i++) { const m = new THREE.MeshBasicMaterial({ color: col }); const p = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), m); p.position.set((i - (c.max - 1) / 2) * 0.65, -3, 0); root.add(p); pips.push(m); }
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.9, 30, 12, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = -16; root.add(beam);
+    root.position.set(c.x, c.y, c.z); this.world.add(root); this.coreV = { root, shell, core, coreMat, halo, pips };
+  }
+  private animateObjectives(dt: number, _a: Actions) {
+    const t = this.ctx.engine.elapsed, c = this.sim.core, cv = this.coreV;
+    // three's rotation.y turns +X towards -Z, the sim's angle turns +X towards +Z: hence the minus
+    if (c && cv) { cv.shell.rotation.y = -c.rot; cv.core.rotation.y = t * 0.8; cv.core.scale.setScalar(1 + 0.06 * Math.sin(t * 5) + c.flash * 0.5); cv.coreMat.color.setScalar(1 + c.flash * 2); (cv.halo.material as THREE.MeshBasicMaterial).opacity = 0.16 + 0.08 * Math.sin(t * 3) + c.flash; }
+    for (const n of this.sim.nodes) { const v = this.nodeV.get(n.id); if (!v) continue; v.g.position.set(n.x, n.y, n.z); v.g.children[0].rotation.y = t * 2.4; v.g.children[0].position.y = 1.2 + Math.sin(t * 3 + n.id) * 0.12; v.g.visible = n.life > 3 || Math.sin(t * 18) > 0; }
+  }
+  private nodeMesh(kind: string): THREE.Group {
+    const col = kind === 'split' ? 0x6dffb0 : kind === 'pierce' ? 0xff4fd8 : 0xffd23c, g = new THREE.Group(), m = new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.4) });
+    const gem = new THREE.Mesh(kind === 'split' ? new THREE.TetrahedronGeometry(0.42) : kind === 'pierce' ? new THREE.ConeGeometry(0.22, 0.8, 4) : new THREE.OctahedronGeometry(0.4), m); gem.position.y = 1.2; g.add(gem);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.04; g.add(ring);
+    const col2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 6, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); col2.position.y = 1.2; g.add(col2);
+    return g;
   }
   private addDisc(id: number, f: Fighter) {
     const d = this.sim.disc(id)!; const hostile = !f.isPlayer, color = hostile ? HOSTILE : ION; const root = new THREE.Group();
@@ -363,6 +400,16 @@ export class DiscSession extends BaseSession {
       }
       case 'score': hud.toast(`${e.label}  +${e.points}`, 'score'); break;
       case 'lastEnemy': audio.say('Final opponent remaining.'); break;
+      case 'split': { const P = this.sim.player; for (const id of e.discs) if (!this.dv.has(id)) this.addDisc(id, P); hud.toast('SPLIT THROW', 'good'); audio.sfx('throw', pos); break; }
+      case 'discGone': { const v = this.dv.get(e.disc); if (v && !this.sim.disc(e.disc)) { this.world.remove(v.root, v.ribbon.mesh); if (v.rise) this.world.remove(v.rise.mesh); this.dv.delete(e.disc); vfx.sparks(e.x ?? 0, e.y ?? 0, e.z ?? 0, ION, 14, 5, 0.35); } break; }
+      case 'nodeSpawn': { const g = this.nodeMesh(e.kind); g.position.set(e.x, e.y, e.z); this.world.add(g); this.nodeV.set(e.node, { g, kind: e.kind }); vfx.motes(e.x, e.y, e.z, 0xffffff, 0.8, 2, 12); audio.sfx('pickup', e); if (!this.seenNode) { this.seenNode = true; hud.toast('POWER NODE ON YOUR SIDE — HOP TO IT', 'info'); } break; }
+      case 'node': { const v = this.nodeV.get(e.node); if (v) { this.world.remove(v.g); this.nodeV.delete(e.node); } vfx.ring(e.x, e.y + 0.1, e.z, 0xffffff, 0.3, 3, 0.4); vfx.sparks(e.x, e.y + 1, e.z, 0xffffff, 30, 6, 0.5); audio.sfx('power'); xr.pulse('both', 0.5, 80);
+        hud.toast(e.kind === 'split' ? 'SPLIT CHARGED — NEXT THROW FANS INTO THREE' : e.kind === 'pierce' ? 'PIERCE CHARGED — NEXT THROW GOES THROUGH SHIELDS' : 'MENDED  +30', 'good'); break; }
+      case 'nodeGone': { const v = this.nodeV.get(e.node); if (v) { this.world.remove(v.g); this.nodeV.delete(e.node); } break; }
+      case 'rally': if (e.broken) hud.toast('RALLY BROKEN', 'danger'); else if (e.value >= 1.15) { hud.toast(`RALLY ×${e.value.toFixed(1)}`, 'score'); if (e.value >= 1.59) audio.cheer(0.8); } break;
+      case 'coreHit': { const cv = this.coreV; if (cv) cv.pips.forEach((m, i) => m.color.setHex(i < e.hp ? this.th.accent2 : 0x222831)); vfx.shatter(e.x, e.y, e.z, 0xffffff, 30, 1, undefined, 6); vfx.ring(this.sim.core!.x, this.sim.core!.y, this.sim.core!.z, 0xffffff, 1, 6, 0.5); audio.sfx('shatter', e); audio.cheer(0.6);
+        hud.toast(e.hp > 0 ? `CORE HIT — ${e.hp} LEFT` : 'CORE BREACHED', 'score'); xr.pulse('both', 0.7, 120); break; }
+      case 'coreDown': { const cv = this.coreV; if (cv) { vfx.derez(e.x, e.y - 2, e.z, this.th.accent2, { height: 4, count: 500, power: 12, big: true }); this.world.remove(cv.root); this.coreV = null; } hud.banner('CORE BREACHED', 'The rival side is wired to it', 2200); audio.sfx('explosion'); audio.cheer(1.4); engine.addShake(0.8); break; }
       case 'wave': hud.banner(`WAVE ${e.index + 1} / ${e.total}`, 'Reinforcements materialising', 2000); audio.say('Reinforcements inbound.'); break;
       case 'bossIntro': this.bossName = e.title; break;
       case 'bossPhase': if (!e.first) { hud.banner(`PHASE ${e.index + 1} — ${String(e.name).toUpperCase()}`, this.bossName, 2200); audio.sfx('boss'); audio.intensity = 1; if (f) { vfx.ring(f.x, f.y + 1, f.z, f.arch.tint, 0.5, 9, 0.9); vfx.flash(f.x, f.y + 1, f.z, f.arch.tint, 30); } this.crowd.excite(1.3); audio.cheer(1); } break;
@@ -391,6 +438,7 @@ export class DiscSession extends BaseSession {
 
   // ------------------------------------------------------------ presentation
   protected view(dt: number, alpha: number, a: Actions) {
+    this.animateObjectives(dt, a);
     const { engine, hud, audio, vfx, xr } = this.ctx, sim = this.sim, P = sim.player, t = engine.elapsed, cam = engine.camera;
     for (const m of this.timed) { m.uniforms.uTime.value = t; if (m.uniforms.uFlash) m.uniforms.uFlash.value *= Math.exp(-6 * dt); }
     if (this.slowT > 0) { this.slowT -= dt; const k = clamp(1 - this.slowT / this.slowDur, 0, 1); this.timeScale = this.slowT <= 0 ? 1 : lerp(this.slowMin, 1, smooth(clamp((k - 0.45) / 0.55, 0, 1))); if (this.slowT <= 0) this.slowMin = 1; }

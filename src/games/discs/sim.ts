@@ -41,7 +41,13 @@ export interface Disc {
   x: number; y: number; z: number; px: number; py: number; pz: number; vx: number; vy: number; vz: number;
   bounces: number; age: number; homing: number; target: number; hit: Set<number>; parried: boolean; /** passed through an amplifier ring this flight */ amped?: boolean;
   /** What was thrown: a ricocheting disc, an unparryable straight lance, or a heavy arc blade. */ weapon?: Weapon;
+  /** A split-throw copy: it derezzes instead of returning, and is removed from the list. */ temp?: boolean; dead?: boolean;
 }
+/** Power node on one of the player's decks: stand on it to take it. Split and Pierce charge the next throw. */
+export interface PowerNode { id: number; kind: 'split' | 'pierce' | 'mend'; platform: number; ox: number; oz: number; x: number; y: number; z: number; life: number }
+/** Shielded core behind the rival line ('core' tiers). Six hits through the rotating gap derez the whole rival side. */
+export interface Core { x: number; y: number; z: number; hp: number; max: number; rot: number; spin: number; gap: number; flash: number }
+const CORE_R = 1.3, CORE_SHELL = 2.5;
 /** Amplifier ring: a gold gate hanging over the gap. A disc thrown through it speeds up and hits harder — for either side. */
 export interface AmpRing { x: number; y: number; z: number; r: number; bx: number; sway: number; phase: number; flash: number }
 export interface DiscSimConfig {
@@ -67,6 +73,9 @@ export class DiscSim {
   combo = 0; comboT = 0; wave = 0; waveDelay = 0;
   interfereT = 0; surgeOn = false; surgeTimer = 6; shiftTimer = 0; shiftIdx = 0; shiftAuto = 0; collapseOn: boolean;
   walls: { nx: number; nz: number }[]; amps: AmpRing[] = [];
+  /** Rally ('rally' tiers): parries and hits raise it (to 1.6); it speeds the player's throws and adds damage. A hit taken resets it. */ rally = 1;
+  /** Power nodes ('pickups' tiers) and the charge the next throw carries. */ nodes: PowerNode[] = []; nodeT = 6; buff: '' | 'split' | 'pierce' = '';
+  core: Core | null = null;
   private nextId = 1; private ambientInterfere = 0;
   player!: Fighter;
 
@@ -82,6 +91,7 @@ export class DiscSim {
     this.shiftTimer = this.shiftAuto;
     this.ambientInterfere = cfg.modifiers.includes('interference') ? 14 : 0;
     if (cfg.modifiers.includes('amp')) { const n = cfg.modifiers.includes('amp-3') ? 3 : 2; for (let i = 0; i < n; i++) { const bx = n === 3 ? (i - 1) * 7 : (i ? 4.5 : -4.5); this.amps.push({ x: bx, y: 2.3 + (i % 2) * 0.9, z: 3.2, r: 1.25, bx, sway: n === 3 ? 1.6 : 2.6, phase: i * 2.2, flash: 0 }); } }
+    if (cfg.modifiers.includes('core')) { const A = cfg.arena; this.core = { x: 0, y: 7.5, z: -(A.radius - 3.2), hp: 6, max: 6, rot: 0, spin: 0.6, gap: 1.5, flash: 0 }; }
     const home = this.platforms.findIndex((p) => p.side === 0);
     const P = this.platforms[home];
     this.player = this.makeFighter(0, 'player', { ...ARCHETYPES.sentinel, label: 'Runner', hp: cfg.playerHp, speed: 6.2, throwSpeed: 32, discs: cfg.playerDiscs }, P.x, P.y, P.z, home);
@@ -142,6 +152,7 @@ export class DiscSim {
     if (this.comboT > 0) { this.comboT -= dt; if (this.comboT <= 0) this.combo = 0; }
     this.stepArena(dt);
     for (const a of this.amps) { a.x = a.bx + Math.sin(this.time * 0.42 + a.phase) * a.sway; a.flash = Math.max(0, a.flash - dt); }
+    this.stepNodes(dt); if (this.core) { this.core.rot += this.core.spin * dt; this.core.flash = Math.max(0, this.core.flash - dt); }
     for (const f of this.fighters) {
       if (!f.alive) continue;
       f.px = f.x; f.py = f.y; f.pz = f.z;
@@ -149,6 +160,7 @@ export class DiscSim {
       this.stepFighter(f, intent, dt);
     }
     this.stepDiscs(dt);
+    if (this.discs.some((d) => d.dead)) this.discs = this.discs.filter((d) => !d.dead);
     this.stepUpgrades();
     this.checkBoss();
     // waves / end state
@@ -354,20 +366,67 @@ export class DiscSim {
   throwDisc(f: Fighter, charge: number, power = 1, it?: DiscIntent) {
     let d: Disc | undefined; for (const id of f.discIds) { const c = this.disc(id)!; if (c.state === 'held') { d = c; break; } }
     if (!d) return;
-    const speed = (f.arch.throwSpeed * (0.82 + 0.3 * charge)) * power * (f.isPlayer ? 1 : this.cfg.discSpeedMul);
+    const speed = (f.arch.throwSpeed * (0.82 + 0.3 * charge)) * power * (f.isPlayer ? 1 + (this.rally - 1) * 0.6 : this.cfg.discSpeedMul);
     const a = this.cfg.arena;
     d.state = 'flying'; d.team = f.team; d.parried = false; d.amped = false; d.bounces = 0; d.age = 0; d.hit.clear();
     d.x = f.x + f.ax * 0.75; d.y = clamp(f.y + 1.4 + f.ay * 0.3, a.floor + 0.5, a.ceiling - 0.5); d.z = f.z + f.az * 0.75;
     if (it && it.ox !== undefined) { const rx = it.ox - f.x, ry = it.oy! - (f.y + 1.3), rz = it.oz! - f.z, rl = Math.hypot(rx, ry, rz), k = rl > 1.3 ? 1.3 / rl : 1; d.x = f.x + rx * k; d.y = clamp(f.y + 1.3 + ry * k, a.floor + 0.5, a.ceiling - 0.5); d.z = f.z + rz * k; }
     d.px = d.x; d.py = d.y; d.pz = d.z;
     // weapon tuning: a lance is fast and flat, an arc blade is slow and heavy. The disc is unchanged.
-    const w = (d.weapon = f.arch.weapon ?? 'disc');
+    // a Pierce charge turns the player's next throw into a lance: straight, fast, and through a raised shield
+    const pierce = f.isPlayer && this.buff === 'pierce'; if (pierce) this.buff = '';
+    const w = (d.weapon = pierce ? 'lance' : f.arch.weapon ?? 'disc');
     const vk = w === 'lance' ? 1.55 : w === 'arc' ? 0.62 : 1;
     d.vx = f.ax * speed * vk; d.vy = f.ay * speed * vk; d.vz = f.az * speed * vk;
     d.homing = w === 'lance' ? 0 : f.arch.homing; d.target = f.isPlayer ? 0 : this.player.id;
     f.throwCd = 0.22;
     if (f.isPlayer) this.stats.throws++;
     this.events.push({ type: 'throw', id: f.id, disc: d.id, x: d.x, y: d.y, z: d.z, homing: d.homing > 0, charge, weapon: w });
+    // a Split charge fans the throw into three: two copies 12 degrees either side, which derez when they are spent
+    if (f.isPlayer && this.buff === 'split') {
+      this.buff = ''; const ids: number[] = [];
+      for (const a of [-0.21, 0.21]) {
+        const c = Math.cos(a), sn = Math.sin(a), t: Disc = { ...d, id: this.nextId++, hit: new Set(), temp: true, vx: d.vx * c + d.vz * sn, vz: -d.vx * sn + d.vz * c };
+        this.discs.push(t); ids.push(t.id);
+      }
+      this.events.push({ type: 'split', id: f.id, discs: ids, x: d.x, y: d.y, z: d.z });
+    }
+  }
+
+  // ---------------------------------------------------------------- power nodes, rally, core
+  private stepNodes(dt: number) {
+    if (!this.cfg.modifiers.includes('pickups')) return;
+    const P = this.player;
+    for (const n of this.nodes) { const p = this.platforms[n.platform]; n.x = p.x + n.ox; n.y = p.y; n.z = p.z + n.oz; n.life -= dt; }
+    for (const n of this.nodes) {
+      if (n.life <= 0 || this.platforms[n.platform].state === 'down') { n.life = -1; this.events.push({ type: 'nodeGone', node: n.id }); continue; }
+      if (P.alive && !P.hop && Math.hypot(P.x - n.x, P.z - n.z) < 1.3 && Math.abs(P.y - n.y) < 1.2) {
+        n.life = -1; if (n.kind === 'mend') { P.hp = Math.min(P.maxHp, P.hp + 30); P.shield = Math.min(P.maxShield, P.shield + 40); } else this.buff = n.kind;
+        this.events.push({ type: 'node', node: n.id, kind: n.kind, x: n.x, y: n.y, z: n.z }); this.addScore(40, 'Power node');
+      }
+    }
+    this.nodes = this.nodes.filter((n) => n.life > 0);
+    this.nodeT -= dt; if (this.nodeT > 0 || this.nodes.length) return; this.nodeT = this.rng.range(9, 13);
+    // prefer a deck the player is not standing on: taking a node should mean making a hop
+    const decks = this.platforms.map((p, i) => ({ p, i })).filter((e) => e.p.side === 0 && e.p.state === 'up' && !e.p.gone);
+    if (!decks.length) return; const away = decks.filter((e) => e.i !== P.platform), pick = (away.length ? away : decks)[Math.floor(this.rng.next() * (away.length ? away : decks).length)];
+    const kinds = ['split', 'pierce', 'mend'] as const, kind = P.hp < P.maxHp * 0.45 ? 'mend' : kinds[Math.floor(this.rng.next() * 3)];
+    const a = this.rng.range(0, Math.PI * 2), r = pick.p.r * 0.45, n: PowerNode = { id: this.nextId++, kind, platform: pick.i, ox: Math.cos(a) * r, oz: Math.sin(a) * r, x: 0, y: 0, z: 0, life: 14 };
+    n.x = pick.p.x + n.ox; n.y = pick.p.y; n.z = pick.p.z + n.oz; this.nodes.push(n); this.events.push({ type: 'nodeSpawn', node: n.id, kind, x: n.x, y: n.y, z: n.z });
+  }
+  private raiseRally(by: number) {
+    if (!this.cfg.modifiers.includes('rally')) return; const before = this.rally; this.rally = Math.min(1.6, this.rally + by);
+    if (Math.floor(this.rally * 10) !== Math.floor(before * 10)) this.events.push({ type: 'rally', value: this.rally });
+  }
+  /** Segment vs sphere: entry parameter in [0, 1], or -1 (no entry, or already inside). */
+  private static sphereT(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, cx: number, cy: number, cz: number, r: number) {
+    const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, fx = x0 - cx, fy = y0 - cy, fz = z0 - cz, a = dx * dx + dy * dy + dz * dz, b = 2 * (fx * dx + fy * dy + fz * dz), c = fx * fx + fy * fy + fz * fz - r * r;
+    if (c <= 0 || a < 1e-12) return -1; const disc = b * b - 4 * a * c; if (disc < 0) return -1; const t = (-b - Math.sqrt(disc)) / (2 * a); return t >= 0 && t <= 1 ? t : -1;
+  }
+  private coreDown() {
+    const c = this.core!; this.events.push({ type: 'coreDown', x: c.x, y: c.y, z: c.z }); this.addScore(600, 'Core breached');
+    // the whole rival side is wired to it: every rival derezzes, and no further wave comes
+    this.wave = this.cfg.waves.length - 1; for (const f of this.fighters) if (f.team === 1 && f.alive) this.eliminate(f, 'core');
   }
 
   // ---------------------------------------------------------------- discs
@@ -377,6 +436,7 @@ export class DiscSim {
       const owner = this.fighter(d.owner);
       d.px = d.x; d.py = d.y; d.pz = d.z;
       if (!owner || !owner.alive) { if (d.state !== 'held') { d.state = 'held'; this.events.push({ type: 'discGone', disc: d.id }); } continue; }
+      if (d.temp && d.state !== 'flying') { d.dead = true; this.events.push({ type: 'discGone', disc: d.id, x: d.x, y: d.y, z: d.z }); continue; }
       if (d.state === 'held') { d.x = owner.x; d.y = owner.y + 1.2; d.z = owner.z; continue; }
       d.age += dt;
       if (d.state === 'returning') {
@@ -435,6 +495,18 @@ export class DiscSim {
             if (axis === 1) { nx = 0; ny = sign; nz = 0; } else { const lx = axis === 0 ? sign : 0, lz = axis === 2 ? sign : 0; nx = lx * c + lz * s; ny = 0; nz = -lx * s + lz * c; }
           }
         }
+        // the core: its shell turns a disc away except through the rotating gap; through the gap, the core takes the hit
+        let coreHit = false;
+        if (this.core) {
+          // the shell is only tested on the way in; a disc that came through the gap may reach the core several steps later
+          const c = this.core, ts = DiscSim.sphereT(d.x, d.y, d.z, ex, ey, ez, c.x, c.y, c.z, CORE_SHELL + DISC_R); let blocked = false;
+          if (ts >= 0 && ts < tHit) {
+            const sx = d.x + (ex - d.x) * ts - c.x, sy = d.y + (ey - d.y) * ts - c.y, sz = d.z + (ez - d.z) * ts - c.z, az = Math.atan2(sz, sx);
+            let rel = az - c.rot; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+            if (Math.abs(rel) >= c.gap / 2 || Math.abs(sy) >= CORE_SHELL * 0.8) { const l = CORE_SHELL + DISC_R; tHit = ts; nx = sx / l; ny = sy / l; nz = sz / l; kind = 'shell'; bHit = null; blocked = true; }
+          }
+          if (!blocked) { const tc = DiscSim.sphereT(d.x, d.y, d.z, ex, ey, ez, c.x, c.y, c.z, CORE_R + DISC_R); if (tc >= 0 && tc < tHit) { tHit = tc; coreHit = true; bHit = null; } }
+        }
         // fighters along the travelled part of the segment
         const hx1 = d.x + (ex - d.x) * tHit, hy1 = d.y + (ey - d.y) * tHit, hz1 = d.z + (ez - d.z) * tHit;
         let victim: Fighter | null = null, vs = 2;
@@ -449,6 +521,11 @@ export class DiscSim {
           this.hitFighter(d, victim); remaining *= 1 - tHit * vs; if (d.state !== 'flying') break; continue;
         }
         d.x = hx1; d.y = hy1; d.z = hz1;
+        if (coreHit) {
+          const c = this.core!; d.state = 'returning';
+          if (d.team === 0 && c.hp > 0) { c.hp--; c.flash = 0.4; this.raiseRally(0.1); this.addScore(120, 'Core hit'); this.events.push({ type: 'coreHit', hp: c.hp, max: c.max, x: d.x, y: d.y, z: d.z }); if (c.hp <= 0) this.coreDown(); }
+          break;
+        }
         if (tHit >= 1) break;
         // an arc blade cuts a destructible barrier down and carries on through it; everything else ricochets
         const cut = d.weapon === 'arc' && !!bHit && bHit.def.hp > 0;
@@ -512,7 +589,7 @@ export class DiscSim {
         d.vx = (tx / tl) * ns; d.vy = (ty / tl) * ns; d.vz = (tz / tl) * ns; d.team = f.team; d.parried = true; d.bounces = 0; d.age = 0; d.homing = 0;
         f.shield = Math.min(f.maxShield, f.shield + 15);
         this.events.push({ type: 'parry', id: f.id, x: d.x, y: d.y, z: d.z });
-        if (f.isPlayer) { this.stats.parries++; this.addScore(DISC_POINTS.parry, 'Parry'); }
+        if (f.isPlayer) { this.stats.parries++; this.addScore(DISC_POINTS.parry, 'Parry'); this.raiseRally(0.1); }
       } else {
         const dot = d.vx * f.ax + d.vy * f.ay + d.vz * f.az; d.vx -= 2 * dot * f.ax; d.vy -= 2 * dot * f.ay; d.vz -= 2 * dot * f.az; d.bounces++; d.homing = 0;
         f.shield -= 26; this.events.push({ type: 'block', id: f.id, x: d.x, y: d.y, z: d.z });
@@ -524,13 +601,14 @@ export class DiscSim {
     }
     d.hit.add(f.id);
     const owner = this.fighter(d.owner);
-    const dmg = DISC_DAMAGE * (1 + 0.25 * d.bounces) * (d.parried ? 1.3 : 1) * (d.amped ? AMP_DAMAGE : 1);
+    const mine = d.team === 0 && f.team === 1;
+    const dmg = DISC_DAMAGE * (1 + 0.25 * d.bounces) * (d.parried ? 1.3 : 1) * (d.amped ? AMP_DAMAGE : 1) * (mine ? this.rally : 1);
     this.events.push({ type: 'hit', id: f.id, by: d.owner, x: d.x, y: d.y, z: d.z, dx, dz, bounces: d.bounces, parried: d.parried });
     const byPlayer = (owner?.isPlayer && !d.parried) || (d.parried && d.team === 0);
     if (byPlayer && f.team === 1) {
       this.stats.hits++; if (d.bounces > 0) this.stats.ricochetHits++;
       this.combo++; this.comboT = DISC_POINTS.comboWindow; this.stats.maxCombo = Math.max(this.stats.maxCombo, this.combo);
-      this.addScore(Math.round(discHitScore(d.bounces, this.combo) * (d.amped ? 1.5 : 1)), d.amped ? 'Amplified hit' : d.bounces > 0 ? `Ricochet ×${d.bounces}` : 'Direct hit');
+      this.addScore(Math.round(discHitScore(d.bounces, this.combo) * (d.amped ? 1.5 : 1)), d.amped ? 'Amplified hit' : d.bounces > 0 ? `Ricochet ×${d.bounces}` : 'Direct hit'); this.raiseRally(0.07);
     }
     this.damage(f, dmg, dx * 6.5, dz * 6.5, 'disc');
     d.state = 'returning';
@@ -539,7 +617,7 @@ export class DiscSim {
   damage(f: Fighter, amount: number, kx: number, kz: number, cause: string) {
     if (!f.alive || f.invuln > 0 && cause !== 'surge') return;
     f.hp -= amount; f.stagger = Math.max(f.stagger, cause === 'surge' ? 0.3 : 0.38); f.kx += kx; f.kz += kz; f.winding = false; f.wind = 0;
-    if (f.isPlayer) { this.stats.damageTaken += amount; this.combo = 0; }
+    if (f.isPlayer) { this.stats.damageTaken += amount; this.combo = 0; if (this.rally > 1) { this.rally = 1; this.events.push({ type: 'rally', value: 1, broken: true }); } }
     this.events.push({ type: 'damage', id: f.id, amount, cause, hp: f.hp });
     if (f.hp <= 0) this.eliminate(f, cause);
   }
