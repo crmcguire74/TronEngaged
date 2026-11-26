@@ -81,7 +81,7 @@ export class App {
     this.loadingEl.style.display = 'none';
     const q = new URLSearchParams(location.search), play = q.get('play');
     this.showMenuScene();
-    if (play) { const [track, id] = play.split(':'); const t = TRACKS[track as TrackId]?.tiers.find((x) => x.id === Number(id)); if (t) { this.current = { track: track as TrackId, tier: t, stage: 0, stagePoints: 0, salt: 0 }; s.seenSplash = true; this.launch(); return; } }
+    if (play) { const [track, id] = play.split(':'); if (this.playTier(track, Number(id))) { s.seenSplash = true; return; } }
     this.splash = new Splash(this.ctx, this.ui, this.menuScene!, !s.seenSplash && !q.has('nosplash'), () => { this.splash = null; s.seenSplash = true; this.store.save(); this.enterMenu(); });
     this.state = 'splash';
   }
@@ -115,6 +115,8 @@ export class App {
   }
 
   /** Loads scene-required assets, then builds the session. */
+  /** Starts a tier directly (the ?play= link, and QA runs that enter VR from the menu first). */
+  playTier(track: string, id: number) { const t = TRACKS[track as TrackId]?.tiers.find((x) => x.id === id); if (!t) return false; this.current = { track: track as TrackId, tier: t, stage: 0, stagePoints: 0, salt: 0 }; this.launch(); return true; }
   launch(retry = false) {
     const c = this.current; if (!c) return; if (retry) { c.salt++; if (c.stage > 0 && !c.endless) { c.stage = 0; c.stagePoints = 0; } }
     this.menu.close(); this.state = 'loading'; this.audio.unlock(); this.xr.clearEdges();
@@ -204,10 +206,18 @@ export class App {
   private slowT = 0; private fastT = 0; perf = 0;
   private govern(dt: number) {
     const xr = this.xr.presenting, target = 1 / Math.max(60, (this.engine.renderer.xr.getSession() as any)?.frameRate ?? 72);
-    if (!xr) { if (this.perf) { this.perf = 0; this.applyPerf(); } return; }
+    if (!xr) {
+      if (this.perf) { this.perf = 0; this.applyPerf(); }
+      // desktop: under ~40 fps for two seconds sheds a level (shadows, then pixel ratio, then bloom); over ~55 fps for
+      // ten seconds earns one back. Menus count too, so a slow machine is already stepped down when a game starts.
+      if (dt > 1 / 40) { this.slowT += dt; this.fastT = 0; } else if (dt < 1 / 55) { this.fastT += dt; this.slowT = Math.max(0, this.slowT - dt * 0.5); }
+      const L = this.engine.loadLevel; if (this.slowT > 2 && L < 3 && !this.hidden()) { this.engine.setLoad(L + 1); this.slowT = 0; } else if (this.fastT > 10 && L > 0) { this.engine.setLoad(L - 1); this.fastT = 0; }
+      return;
+    }
     if (dt > target * 1.18) { this.slowT += dt; this.fastT = 0; } else if (dt < target * 1.05) { this.fastT += dt; this.slowT = Math.max(0, this.slowT - dt * 0.5); }
     if (this.slowT > 1 && this.perf < 2) { this.perf++; this.slowT = 0; this.applyPerf(); } else if (this.fastT > 8 && this.perf > 0) { this.perf--; this.fastT = 0; this.applyPerf(); }
   }
+  private hidden() { return document.hidden || new URLSearchParams(location.search).has('qa'); }
   private applyPerf() { this.engine.lodScale = [1, 0.7, 0.5][this.perf]; this.vfx.density = [1, 0.6, 0.35][this.perf]; try { this.engine.renderer.xr.setFoveation(this.perf ? 1 : this.store.data.settings.quality === 'high' ? 0.5 : 1); } catch { /* unsupported */ } }
   /** QA hook: steps the frame loop synchronously (background tabs throttle requestAnimationFrame). Not used by gameplay. */
   debugAdvance(seconds: number, step = 1 / 60) { let t = this.last; const n = Math.round(seconds / step); for (let i = 0; i < n; i++) { t += step * 1000; this.frame(t); } return this.state; }

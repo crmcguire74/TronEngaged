@@ -14,7 +14,11 @@ import { inFeature, surfaceY, wrapIdx, type Track, type TrackFeature } from './t
 function towerMaterial(th: Theme, seed: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: { uAcc: { value: new THREE.Color(th.accent) }, uAcc2: { value: new THREE.Color(th.accent2) }, uTime: { value: 0 }, uSeed: { value: seed } },
-    vertexShader: 'varying vec2 vUv; varying vec3 vW; varying vec3 vN; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * w; }',
+    vertexShader: `varying vec2 vUv; varying vec3 vW; varying vec3 vN; void main(){ vUv = uv; mat4 m = modelMatrix;
+      #ifdef USE_INSTANCING
+        m = m * instanceMatrix;
+      #endif
+      vec4 w = m * vec4(position,1.0); vW = w.xyz; vN = normalize(mat3(m) * normal); gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: `uniform vec3 uAcc, uAcc2; uniform float uTime, uSeed; varying vec2 vUv; varying vec3 vW; varying vec3 vN;
       float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21) + uSeed); p += dot(p, p + 45.32); return fract(p.x * p.y); }
       void main(){
@@ -30,7 +34,7 @@ function towerMaterial(th: Theme, seed: number): THREE.ShaderMaterial {
         float band = smoothstep(0.985, 1.0, vUv.y) + smoothstep(0.02, 0.0, vUv.y);
         col += uAcc * band * 1.4;
         // edge sheen so the silhouette reads against the sky
-        vec3 v = normalize(cameraPosition - vW); col += uAcc * pow(1.0 - abs(dot(v, vN)), 4.0) * 0.5;
+        vec3 v = normalize(cameraPosition - vW); col += uAcc * pow(max(0.0, 1.0 - abs(dot(v, normalize(vN)))), 4.0) * 0.5;
         float fade = 1.0 - smoothstep(420.0, 1100.0, length(vW - cameraPosition)); col *= 0.25 + 0.75 * fade;
         gl_FragColor = vec4(col, 1.0); ${TONE} }`,
   });

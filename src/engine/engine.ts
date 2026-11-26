@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { gridEnvironment } from './env';
 import type { Settings } from '../persistence/store';
 
@@ -64,15 +65,31 @@ export class Engine {
     this.hurtMesh = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 16), hm); this.hurtMesh.renderOrder = 9997; this.hurtMesh.frustumCulled = false; this.hurtMesh.visible = false; this.camera.add(this.hurtMesh);
     this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Guard: one NaN or infinite pixel (a shader edge case on some GPUs) is smeared by the bloom blur across the whole
+    // frame, which turns the screen black and flickering. Any non-finite pixel is zeroed before bloom sees it.
+    this.composer.addPass(new ShaderPass({ uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); bvec4 bad = bvec4(isnan(c.r) || isinf(c.r), isnan(c.g) || isinf(c.g), isnan(c.b) || isinf(c.b), isnan(c.a) || isinf(c.a)); gl_FragColor = any(bad) ? vec4(0.0, 0.0, 0.0, 1.0) : min(c, vec4(64.0)); }' }));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.4, 0.55, 0.9); this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     addEventListener('resize', () => this.resize()); this.resize();
   }
 
+  private base = { dpr: 1, bloom: true, shadows: true }; private load = 0;
   applySettings(s: Settings) {
-    const q = QUALITY[s.quality]; this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.dpr));
-    this.useBloom = q.bloom && s.bloom > 0.01; this.bloom.strength = 0.38 * s.bloom; this.renderer.shadowMap.enabled = q.shadows;
-    this.reducedMotion = s.reducedMotion; this.resize();
+    const q = QUALITY[s.quality]; this.base = { dpr: Math.min(devicePixelRatio, q.dpr), bloom: q.bloom && s.bloom > 0.01, shadows: q.shadows };
+    this.bloom.strength = 0.38 * s.bloom; this.reducedMotion = s.reducedMotion; this.applyLoad();
+  }
+  /**
+   * Desktop load shedding, driven by the app's frame-time governor: 0 = the chosen quality; 1 = no shadows; 2 = also
+   * at most 1x pixel ratio; 3 = also no bloom and 0.75x. A laptop GPU that cannot hold the chosen quality steps down
+   * instead of crawling, and steps back up once frames are quick again.
+   */
+  setLoad(level: number) { if (level !== this.load) { this.load = level; this.applyLoad(); } }
+  get loadLevel() { return this.load; }
+  private applyLoad() {
+    const b = this.base, l = this.load; this.renderer.setPixelRatio(l >= 3 ? Math.min(b.dpr, 0.75) : l >= 2 ? Math.min(b.dpr, 1) : b.dpr);
+    this.useBloom = b.bloom && l < 3; this.renderer.shadowMap.enabled = b.shadows && l < 1; this.resize();
   }
   resize() {
     if (this.renderer.xr.isPresenting) return;

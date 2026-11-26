@@ -34,7 +34,7 @@ export function revealMaterials(root: THREE.Object3D, uni: { value: number }, gl
         prev?.call(m, sh, r);
         sh.uniforms.uReveal = uni; sh.uniforms.uRevealGlow = { value: glow }; sh.uniforms.uRim = { value: rim };
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vRY;').replace('#include <project_vertex>', '#include <project_vertex>\nvRY = (modelMatrix * vec4(transformed, 1.0)).y;');
-        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRY; uniform float uReveal, uRim; uniform vec3 uRevealGlow;').replace('#include <dithering_fragment>', 'if (vRY > uReveal) discard; gl_FragColor.rgb += uRevealGlow * smoothstep(0.22, 0.0, uReveal - vRY) * 3.0;\n' + (rim > 0 ? '#ifdef STANDARD\n gl_FragColor.rgb += uRevealGlow * pow(1.0 - abs(dot(normalize(vViewPosition), normal)), 2.5) * uRim;\n#endif\n' : '') + '#include <dithering_fragment>');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vRY; uniform float uReveal, uRim; uniform vec3 uRevealGlow;').replace('#include <dithering_fragment>', 'if (vRY > uReveal) discard; gl_FragColor.rgb += uRevealGlow * smoothstep(0.22, 0.0, uReveal - vRY) * 3.0;\n' + (rim > 0 ? '#ifdef STANDARD\n gl_FragColor.rgb += uRevealGlow * pow(max(0.0, 1.0 - abs(dot(normalize(vViewPosition), normal))), 2.5) * uRim;\n#endif\n' : '') + '#include <dithering_fragment>');
       };
       m.customProgramCacheKey = () => (prevKey ? prevKey() + '+' : '') + (rim > 0 ? 'reveal-rim' : 'reveal'); m.needsUpdate = true;
     }
