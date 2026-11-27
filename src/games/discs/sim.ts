@@ -54,7 +54,7 @@ export interface AmpRing { x: number; y: number; z: number; r: number; bx: numbe
 export interface DiscSimConfig {
   arena: ArenaDef; seed: number; waves: readonly (readonly EnemySpawn[])[]; modifiers: readonly string[];
   playerHp: number; playerShield: number; playerDiscs: number;
-  aiSkill: number; hazardMul: number; maxAttackers: number; discSpeedMul: number;
+  aiSkill: number; hazardMul: number; maxAttackers: number; discSpeedMul: number; /** rival integrity scale (difficulty) */ enemyHpMul?: number; /** rival disc damage to the player (difficulty) */ enemyDmgMul?: number;
   /** Breakable decks: hits a platform survives before it fails. Only read with the 'fragile-platforms' modifier. */ platformHp?: number;
 }
 
@@ -130,6 +130,7 @@ export class DiscSim {
     const { p, i } = side[best];
     const a = this.rng.range(0, Math.PI * 2), rr = counts[best] ? p.r * 0.5 : 0;
     const f = this.makeFighter(1, type, arch, p.x + Math.cos(a) * rr, p.y, p.z + Math.sin(a) * rr, i);
+    if (this.cfg.enemyHpMul && this.cfg.enemyHpMul !== 1) { f.maxHp = Math.round(f.maxHp * this.cfg.enemyHpMul); f.hp = f.maxHp; }
     f.ai = initAi(this, f, clamp(difficulty + this.cfg.aiSkill, 0, 1));
     this.events.push({ type: 'spawn', id: f.id, kind: type, boss: !!arch.boss, summoned });
     if (arch.boss) this.events.push({ type: 'bossIntro', id: f.id, title: arch.boss.title });
@@ -632,7 +633,7 @@ export class DiscSim {
     d.hit.add(f.id);
     const owner = this.fighter(d.owner);
     const mine = d.team === 0 && f.team === 1;
-    const dmg = DISC_DAMAGE * (1 + 0.25 * d.bounces) * (d.parried ? 1.3 : 1) * (d.amped ? AMP_DAMAGE : 1) * (mine ? this.rally : 1);
+    const dmg = DISC_DAMAGE * (1 + 0.25 * d.bounces) * (d.parried ? 1.3 : 1) * (d.amped ? AMP_DAMAGE : 1) * (mine ? this.rally : 1) * (f.isPlayer && !mine ? this.cfg.enemyDmgMul ?? 1 : 1);
     this.events.push({ type: 'hit', id: f.id, by: d.owner, x: d.x, y: d.y, z: d.z, dx, dz, bounces: d.bounces, parried: d.parried });
     const byPlayer = (owner?.isPlayer && !d.parried) || (d.parried && d.team === 0);
     if (byPlayer && f.team === 1) {

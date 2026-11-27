@@ -94,8 +94,9 @@ export class Drones {
   /** Pace a rider: off to one side and a little behind, filming them. */
   follow(dt: number, x: number, y: number, z: number, yaw: number, look: THREE.Vector3) {
     this.t += dt; const fx = Math.sin(yaw), fz = Math.cos(yaw);
-    // the first drone leads (lens back on the rider, so it is in shot from the chase camera and the cockpit); the second flanks
-    this.d.forEach((_, i) => { const side = i % 2 ? -1 : 1, sw = Math.sin(this.t * 0.35 + i * 2) * 3, along = i === 0 ? 16 + Math.sin(this.t * 0.22) * 4 : -3; this.settle(i, x - fz * side * (8 + sw) + fx * along, y + 4 + i * 1.5, z + fx * side * (8 + sw) + fz * along, look, dt, 7); });
+    // Both drones film from above and behind, well outside the road: one leading drone used to hover 16 m ahead at
+    // head height, swinging across the lane and through tunnel walls, which read as a random object in the way.
+    this.d.forEach((_, i) => { const side = i % 2 ? -1 : 1, sw = Math.sin(this.t * 0.35 + i * 2) * 3, along = i === 0 ? -9 + Math.sin(this.t * 0.22) * 3 : -16; this.settle(i, x - fz * side * (15 + sw) + fx * along, y + 9 + i * 2, z + fx * side * (15 + sw) + fz * along, look, dt, 5); });
   }
 }
 

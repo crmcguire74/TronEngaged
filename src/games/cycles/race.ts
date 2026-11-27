@@ -39,7 +39,7 @@ export interface Racer {
   finished: boolean; finishT: number; out: boolean; integrity: number; slow: boolean; draft: boolean; intent: RaceIntent;
   /** Light-wall events: seconds of wall still to lay, cooldown, and where the last piece ended. */ wallT: number; wallCd: number; wx: number; wz: number;
   /** Ramming: time left as a shoved rider, and the sideways shove still carrying it. */ shoveT: number; shx: number; shz: number; /** grace after being walled or rammed, so a rider is never chain-stalled */ graceT: number;
-  /** Disc tiers: seconds until this rider can throw again. */ discCd: number; /** seconds until another contact can register as a fresh impact */ bumpCd: number;
+  /** Disc tiers: seconds until this rider can throw again. */ discCd: number; /** seconds until another contact can register as a fresh impact */ bumpCd: number; /** passing: the side a rival committed to (-1/1, 0 none), and how long it has been held up */ passSide: number; stuckT: number;
   /** Taken down (derezzed on a wall or thrown off the road): seconds until this rider re-forms on the track. */ downT: number; /** Catch-up pacing: above 1 while a rival trails the player, a touch below while it leads. */ pace: number;
 }
 /** One piece of light wall laid behind a racer. It destroys rivals that ride into it and stuns the player. */
@@ -99,7 +99,7 @@ export class RaceSim {
       const veh = r ? { top: base.top * (0.88 + 0.12 * sk) * (cfg.format === 'pursuit' ? 0.95 : 1), accel: base.accel * (0.9 + 0.1 * sk), handling: base.handling } : base;
       const h = Math.atan2(t.tx[idx], t.tz[idx]);
       const lapOff = t.closed && idx > t.n / 2 && !(cfg.format === 'pursuit' && !isPlayer) ? -1 : 0;
-      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: OPENING_WALL_LOCK, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, bumpCd: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
+      this.racers.push({ id: i + 1, isPlayer, discCd: isPlayer ? 0 : 5 + i * 1.3, model, veh, skill: sk, x: pt.x, y: pt.y, z: pt.z, px: pt.x, py: pt.y, pz: pt.z, h, ph: h, vx: 0, vz: 0, speed: 0, steer: 0, idx, d: col * t.width * 0.2, lap: lapOff, cp: 0, progress: 0, place: i + 1, boost: isPlayer ? clamp(0.5 * cfg.resources, 0, 1) : 0.4, boosting: false, drifting: false, driftT: 0, slip: 0, stun: 0, scrape: false, pulseCd: 6, finished: false, finishT: 0, out: false, integrity: Math.max(2, Math.round(4 * cfg.resources)), slow: false, draft: false, wallT: 0, wallCd: OPENING_WALL_LOCK, wx: pt.x, wz: pt.z, shoveT: 0, shx: 0, shz: 0, graceT: 0, bumpCd: 0, passSide: 0, stuckT: 0, downT: 0, pace: 1, intent: { steer: 0, accel: 0, brake: 0, boost: false, ability: false } });
     }
     this.player = this.racers[n - 1];
     const C = t.closed ? 4 : 5; for (let i = 1; i <= C; i++) this.checkpoints.push(Math.min(t.n - 2, Math.round((i * t.n) / (t.closed ? C : C + 0.02)) % (t.closed ? t.n : 1e9)));
@@ -449,13 +449,16 @@ export class RaceSim {
     const vmax = Math.sqrt((27 * r.veh.handling * (0.72 + 0.28 * sk)) / maxC);
     // catch-up pacing: a rival that has dropped behind the player finds more speed the further back it is, and one far
     // ahead eases a little. The race stays a race for all its laps instead of being settled in the first minute.
-    const P = this.player, gap = (P.progress - r.progress) * t.step, band = clamp(0.3 + this.cfg.aiSkill * 0.4, 0.16, 0.42) * (this.cfg.format === 'elimination' ? 0 : 1); // elimination already punishes being passed
+    const P = this.player, gap = (P.progress - r.progress) * t.step, band = clamp((this.cfg.aiSkill >= 0 ? 0.36 : 0.3) + this.cfg.aiSkill * 0.4, 0.16, 0.48) * (this.cfg.format === 'elimination' ? 0 : 1); // elimination already punishes being passed
     // far behind (past 80 m, so never in the player's sight) a rival finds a further margin, up to 0.25 more
     const far = clamp((gap - 80) / 200, 0, 1) * (band > 0 ? 0.25 : 0);
     const wantPace = r.isPlayer || P.finished || this.cfg.format === 'pursuit' ? 1 : gap > 0 ? 1 + clamp((gap - 6) / 30, 0, 1) * band + far : 1 - clamp((-gap - 45) / 220, 0, 1) * 0.07;
     r.pace = approach(r.pace, wantPace, 0.35 * dt);
     // extra pace never takes a rider past what the tyres can hold: corner speed is capped at the full-skill limit
-    const target = Math.min(r.veh.top * 1.3 * (0.84 + 0.16 * sk) * r.pace, Math.min(vmax * (0.84 + 0.16 * sk) * r.pace, Math.sqrt((27 * r.veh.handling) / maxC) * 0.98 * (1 + far * 0.5)));
+    // pace grows with skill: a top rival runs at the full limit of its machine (it was 0.84-1.0, which a clean player
+    // out-paced on every straight and corner)
+    const hard = this.cfg.aiSkill >= 0, sp = hard ? 0.8 + 0.24 * sk : 0.84 + 0.16 * sk; // Apprentice keeps the gentler curve
+    const target = Math.min(r.veh.top * 1.3 * sp * r.pace, Math.min(vmax * sp * r.pace, Math.sqrt((27 * r.veh.handling) / maxC) * 0.98 * (1 + far * 0.5)));
     const c = t.curv[look]; let d = -Math.sign(c) * Math.min(1, Math.abs(c) * 45) * (hw - 2) * 0.7 * sk;
     d += Math.sin(r.id * 2.4 + r.progress * 0.004) * 1.4;
     for (const h of this.hazards) {
@@ -470,7 +473,20 @@ export class RaceSim {
       d = hd + clear <= hw2 && (hd - clear < -hw2 || hd > 0) ? hd + clear : hd - clear;
       d = clamp(d, -hw2, hw2);
     }
-    for (const o of this.racers) if (o !== r && !o.out && o.downT <= 0) { const dp = (o.progress - r.progress) * t.step; if (dp > 0 && dp < 12 && Math.abs(o.d - d) < 1.9 && o.speed < r.speed + 2) d = o.d + (o.d > 0 ? -2.3 : 2.3); }
+    // Passing. A rider held up behind another picks the side with more road, commits to it for a while (so a blocker
+    // cannot simply mirror it), and goes for super speed to get by. One held up behind the player for more than a
+    // second comes alongside and leans in, so sitting in front of the pack is defended by driving, not by position.
+    let blocker: Racer | null = null, bdp = 1e9;
+    for (const o of this.racers) if (o !== r && !o.out && o.downT <= 0) { const dp = (o.progress - r.progress) * t.step; if (dp > 0 && dp < 14 + r.speed * 0.1 && Math.abs(o.d - r.d) < 2.6 && dp < bdp) { bdp = dp; blocker = o; } }
+    let passing = false, leanIn = false;
+    if (this.cfg.aiSkill < 0) { // Apprentice: the original, easily blocked pass
+      if (blocker && bdp < 12 && Math.abs(blocker.d - d) < 1.9 && blocker.speed < r.speed + 2) d = blocker.d + (blocker.d > 0 ? -2.3 : 2.3);
+    } else if (blocker && blocker.speed < r.speed + 3) {
+      r.stuckT += dt; passing = true; const room = hw - 1.6;
+      if (!r.passSide || r.stuckT > 2.2 && Math.abs(blocker.d - r.d) < 1.2) { r.passSide = blocker.d > 0 ? -1 : blocker.d < 0 ? 1 : (r.id % 2 ? 1 : -1); if (Math.abs(blocker.d + r.passSide * 2.8) > room) r.passSide = -r.passSide; if (r.stuckT > 2.2) r.stuckT = 0.9; }
+      d = clamp(blocker.d + r.passSide * 2.8, -room, room);
+      if (blocker.isPlayer && this.cfg.aiSkill >= 0 && r.stuckT > 1.1 && sk > 0.35 && bdp < 4) { d = blocker.d + r.passSide * 1.1; leanIn = true; }
+    } else { r.stuckT = Math.max(0, r.stuckT - dt * 2); if (r.stuckT <= 0) r.passSide = 0; }
     if (this.lightwalls) {
       // a rider steers round a wall it has noticed; whether it notices depends on its skill, decided once per wall
       const fx = Math.sin(r.h), fz = Math.cos(r.h), reach = 14 + r.speed * 1.1;
@@ -482,7 +498,7 @@ export class RaceSim {
         const wi = wrapIdx(t, r.idx + Math.round(ahead / t.step));
         const la = lateral(t, wi, w.x0, w.z0), lb = lateral(t, wi, w.x1, w.z1), lo = Math.min(la, lb), hi = Math.max(la, lb);
         if (d > hi + 2.4 || d < lo - 2.4) continue;                                  // the current line already clears it
-        if (((w.owner * 7 + r.id * 13 + Math.floor(w.until)) % 10) / 10 > 0.45 + 0.5 * sk) continue;
+        if (((w.owner * 7 + r.id * 13 + Math.floor(w.until)) % 10) / 10 > 0.6 + 0.45 * sk) continue;
         const hwl = t.width / 2 - 1.6, left = lo - 2.4, right = hi + 2.4;
         // take whichever side is on the road; if both are, take the one nearer the line being driven
         const leftOk = left >= -hwl, rightOk = right <= hwl;
@@ -495,7 +511,9 @@ export class RaceSim {
     const want = Math.atan2(pt.x - r.x, pt.z - r.z), err = wrapAngle(want - r.h);
     it.steer = clamp(-err * 2.6, -1, 1);
     it.accel = r.speed < target ? 1 : 0; it.brake = r.speed > target + 4 ? clamp((r.speed - target) / 12, 0.2, 1) : 0;
-    it.boost = r.boost > 0.45 && maxC < 0.012 && sk > 0.3 && Math.abs(err) < 0.2;
+    it.boost = (r.boost > 0.45 && maxC < 0.012 && sk > 0.3 && Math.abs(err) < 0.2) || (passing && hard && r.boost > 0.15 && maxC < 0.02 && sk > 0.25 && Math.abs(err) < 0.35);
+    // leaning in: the steer is held hard toward the blocker, which is what the contact model reads as a ram
+    if (leanIn) it.steer = clamp(it.steer * 1.8, -1, 1);
     it.ability = this.cfg.modifiers.includes('aggressive') && sk > 0.6 && r.pulseCd <= 0 && Math.hypot(this.player.x - r.x, this.player.z - r.z) < 9 && this.time > 8;
     if (this.lightwalls) {
       // lay a wall when someone is close behind in the same lane; an aggressive rival still fires its pulse

@@ -24,13 +24,13 @@ const FIT: Record<string, { s: number; y: number; turn: number; x?: number; z?: 
   // TRON: Uprising ArgonCity cycle: already in metres and already nose-down -Z, so only a half-turn is needed
   argon: { s: 1.06, y: 0, turn: Math.PI },
   // Moto de Tron: eleven metres long down +X, origin off to one side and a metre above the floor
-  moto: { s: 0.225, y: -1.21, turn: Math.PI / 2, x: 2.91, z: -3.0 },
+  moto: { s: 0.31, y: -0.05, turn: Math.PI / 2, x: 2.91, z: -3.0 },
   // TE:BG Agile and Flynn's: both already sit on the floor and are centred, they just arrive very small
   agile: { s: 10.4, y: 0, turn: Math.PI },
   flynn: { s: 8.97, y: 0, turn: Math.PI },
 };
 /** Where the seated rider sits on a machine whose seat differs from the supplied models' (metres, machine space). */
-const SEAT: Record<string, [number, number, number]> = { blade: [0, -0.11, -0.16] };
+const SEAT: Record<string, [number, number, number]> = { blade: [0, -0.11, -0.16], ember: [0, 0.1, -0.3], moto: [0, 0.1, -0.55] };
 /** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
 const RIDER: Record<string, string> = { blade: 'char:azure', azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson', agile: 'char:ivory', flynn: 'char:cobalt' };
 // rivals bring their light copies (machine and rider); the player's own machine never needs one
@@ -152,7 +152,7 @@ export class CycleView {
     }
     const rk = riderKey ?? RIDER[model];
     // a seated rider is posed once and never animated again, so a far copy costs nothing but its own draw
-    const seat = (key: string) => { const r = ctx.assets.instance(key, { cloneMaterials: true }); revealMaterials(r.root, this.reveal, new THREE.Color(color), riderKey ? 0 : 0.9); r.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (this.inst.actions.CanopyClose) r.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ else if (SEAT[model]) r.root.position.set(...SEAT[model]); r.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = r.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(r.root); return r; };
+    const seat = (key: string) => { const r = ctx.assets.instance(key, { cloneMaterials: true }); revealMaterials(r.root, this.reveal, new THREE.Color(color), riderKey ? 0 : 0.9); r.play(this.inst.actions.CanopyClose ? 'RideClosed' : 'Ride', 0); if (SEAT[model]) r.root.position.set(...SEAT[model]); else if (this.inst.actions.CanopyClose) r.root.position.set(0, -0.12, -0.21); /* seated inside the canopy line */ r.mixer?.update(0.3); for (const n of ['PropDiscMesh', 'PropShieldMesh']) { const o = r.root.getObjectByName(n); if (o) o.visible = false; } this.body.add(r.root); return r; };
     if (rk && ctx.assets.has(rk)) { this.riderKey = rk; this.rider = seat(riderKey ? rk : lodChar(ctx.assets, rk)); if (!riderKey && ctx.assets.has('lod2' + rk)) { this.riderLo = seat('lod2' + rk); this.riderLo.root.visible = false; } }
     // rivals read against a dark machine through a fresnel rim in their colour, computed in the rider's own shader: the
     // old back-face outline was a second skinned copy of every body, which doubled the riders' cost

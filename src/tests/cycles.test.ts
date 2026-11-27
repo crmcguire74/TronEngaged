@@ -155,11 +155,11 @@ describe('race balance', () => {
     const t = RACE_TIERS.find((x) => x.modifiers.includes('lightwalls'))!; const sim = new RaceSim(buildRaceConfig(t, 'standard', 'azure'));
     for (const r of sim.racers) expect(r.wallCd).toBeGreaterThanOrEqual(10);
   });
-  it('gives early-tier rivals a skill floor that fades out by tier 14', () => {
+  it('gives early-tier rivals a skill floor that fades out by tier 14, over a flat +0.08 on every tier', () => {
     const early = RACE_TIERS.find((x) => x.id === 2)!, late = RACE_TIERS.find((x) => x.id >= 16)!;
     const e = buildRaceConfig(early, 'standard', 'azure'), l = buildRaceConfig(late, 'standard', 'azure');
     expect(e.rivals[0].skill).toBeGreaterThan(early.enemies[0].difficulty + 0.15);
-    expect(l.rivals[0].skill).toBeCloseTo(late.enemies[0].difficulty, 5);
+    expect(l.rivals[0].skill).toBeCloseTo(Math.min(1, late.enemies[0].difficulty + 0.08 + Math.max(0, 1 - Math.abs(late.id - 10) / 7) * 0.1), 5);
   });
 });
 

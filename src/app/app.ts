@@ -115,6 +115,8 @@ export class App {
   }
 
   /** Loads scene-required assets, then builds the session. */
+  /** QA: every cycle with its rider in a row (see qa.ts). Not reachable from play. */
+  async qaLineup(rivals = true) { this.state = 'qa' as any; const { qaLineup } = await import('./qa'); return qaLineup(this.ctx, rivals); }
   /** Starts a tier directly (the ?play= link, and QA runs that enter VR from the menu first). */
   playTier(track: string, id: number) { const t = TRACKS[track as TrackId]?.tiers.find((x) => x.id === id); if (!t) return false; this.current = { track: track as TrackId, tier: t, stage: 0, stagePoints: 0, salt: 0 }; this.launch(); return true; }
   launch(retry = false) {

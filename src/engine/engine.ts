@@ -101,7 +101,8 @@ export class Engine {
     const old = this.world; this.scene.remove(old); disposeTree(old);
     this.world = g; this.scene.add(g); this.scene.fog = null;
   }
-  addShake(v: number) { if (!this.reducedMotion && !this.renderer.xr.isPresenting) this.shake = Math.min(1, this.shake + v); }
+  /** Camera shake: hits stack, but only to a ceiling, so a run of contacts reads as a jolt and never as a blur. */
+  addShake(v: number) { if (!this.reducedMotion && !this.renderer.xr.isPresenting) this.shake = Math.min(0.75, this.shake + v * 0.7); }
   fadeTo(v: number, speed = 3) { this.fadeTarget = v; this.fadeSpeed = speed; }
   derezTo(v: number, speed = 2) { this.derezTarget = v; this.derezSpeed = speed; }
   /**
@@ -126,7 +127,9 @@ export class Engine {
     const xr = this.renderer.xr.isPresenting;
     (this.vignette.material as THREE.ShaderMaterial).uniforms.uAmt.value = xr ? this.vignetteAmount : 0; this.vignette.visible = xr && this.vignetteAmount > 0.01;
     this.camera.position.sub(this.shakeOff); this.shakeOff.set(0, 0, 0);
-    if (this.shake > 0.001 && !xr) { const s = this.shake * this.shake * 0.22; this.shakeOff.set((Math.random() - 0.5) * s, (Math.random() - 0.5) * s, 0); this.camera.position.add(this.shakeOff); this.shake = Math.max(0, this.shake - dt * 2.4); }
+    // smooth shake: two incommensurate sines per axis instead of a fresh random offset each frame, which strobed the
+    // whole view; peak travel is 5 cm and it dies away in well under half a second
+    if (this.shake > 0.001 && !xr) { const s = this.shake * this.shake * 0.09, e = this.elapsed; this.shakeOff.set((Math.sin(e * 37) * 0.6 + Math.sin(e * 23 + 1.7) * 0.4) * s, (Math.sin(e * 41 + 0.6) * 0.6 + Math.sin(e * 29 + 2.9) * 0.4) * s * 0.8, 0); this.camera.position.add(this.shakeOff); this.shake = Math.max(0, this.shake - dt * 3.2); }
     if (xr || !this.useBloom) this.renderer.render(this.scene, this.camera); else this.composer.render(dt);
     this.camera.getWorldPosition(this.viewPos);
   }

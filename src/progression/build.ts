@@ -24,12 +24,16 @@ export function buildDiscArena(t: TierDefinition, seed: number): ArenaDef {
 }
 
 export function buildDiscConfig(t: TierDefinition, diff: DifficultyId, seedSalt = 0): DiscSimConfig {
-  const D = DIFFICULTIES[diff], seed = hashSeed('discs', t.id, t.name, seedSalt);
+  const D = DIFFICULTIES[diff], seed = hashSeed('discs', t.id, t.name, seedSalt), hard = diff !== 'apprentice';
   const mods = t.params.collapseLater ? [...t.modifiers, 'collapse-later'] : t.modifiers;
   return {
-    arena: buildDiscArena(t, seed), seed, waves: [t.enemies, ...(t.waves ?? [])], modifiers: mods,
+    // a reinforcement wave on Standard and up from tier 12: the first squad down is no longer the end of it
+    arena: buildDiscArena(t, seed), seed, waves: [t.enemies, ...(t.waves ?? []), ...(hard && !t.endless && t.id >= 12 && !t.waves?.length && !t.boss ? [[{ ...t.enemies[0], count: Math.min(2, t.enemies[0].count), difficulty: Math.min(1, t.enemies[0].difficulty + 0.05) }]] : [])], modifiers: mods,
     playerHp: Math.round(100 * D.resources), playerShield: Math.round(100 * D.resources * num(t, 'shieldMul', 1)), playerDiscs: num(t, 'playerDiscs', 3),
-    aiSkill: D.aiSkill, hazardMul: D.hazards, maxAttackers: num(t, 'maxAttackers', 1), discSpeedMul: num(t, 'discSpeed', 1), platformHp: num(t, 'platformHp', 4),
+    // From Standard up rivals are sharper (+0.1 skill), take a quarter more to bring down, and their discs fly 6%
+    // faster: players cleared the whole ladder at the original tuning. Apprentice keeps it. (More simultaneous
+    // attackers made it easier: every rival winding up is a rival with its shield down.)
+    aiSkill: D.aiSkill + (hard ? 0.1 : 0), hazardMul: D.hazards, maxAttackers: num(t, 'maxAttackers', 1), discSpeedMul: num(t, 'discSpeed', 1) * (hard ? 1.06 : 1), platformHp: num(t, 'platformHp', 4), enemyHpMul: hard ? 1.25 : 1, enemyDmgMul: hard ? 1.2 : 1,
   };
 }
 
@@ -68,7 +72,11 @@ export function buildRaceConfig(t: TierDefinition, diff: DifficultyId, playerMod
   const e = t.enemies[0]; const rivals = []; const models = raceRivalModels(t, playerModel);
   // the early tiers (to 14) had rivals that a player could lap after one light wall: their skill gets a floor that
   // fades out by tier 14, so the first races are still beatable but are races
-  const floor = t.endless ? 0 : clamp((15 - t.id) / 13, 0, 1) * 0.22;
+  // (and every tier gets +0.08 on top: players cleared the whole ladder without a contest)
+  // From Standard up, every tier also gets +0.08, and the middle of the ladder (tiers 4-16, where players reported
+  // lapping the field) a further bump of up to 0.1. Apprentice keeps the original curve.
+  const mid = clamp(1 - Math.abs(t.id - 10) / 7, 0, 1) * 0.1;
+  const floor = t.endless ? 0 : clamp((15 - t.id) / 13, 0, 1) * 0.22 + (diff === 'apprentice' ? 0 : 0.08 + mid);
   for (let i = 0; i < models.length; i++) rivals.push({ skill: Math.min(1, (e.difficulty + floor) * (1 - 0.06 * ((i * 7) % 4))), model: models[i] });
   // from the fourth tier on, riders can be rammed off the road
   return { track, seed, laps: num(t, 'laps', 2), format, rivals, modifiers: t.id >= 4 ? [...t.modifiers, 'ramming'] : t.modifiers, aiSkill: D.aiSkill, hazardMul: D.hazards, resources: D.resources, passPlace: num(t, 'passPlace', 3), playerModel, hazards: num(t, 'hazards'), pads: num(t, 'pads', 3) };

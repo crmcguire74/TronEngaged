@@ -94,7 +94,7 @@ describe('disc AI and arenas', () => {
   });
   it('AI moves through its declared states', () => {
     const sim = new DiscSim(buildDiscConfig(DISC_TIERS[10], 'veteran')); const seen = new Set<string>(); const it = emptyIntent();
-    for (let i = 0; i < 25 / DT && sim.state === 'active'; i++) { if (i % 240 === 0) { it.throwHeld = !it.throwHeld; const e = sim.fighters.find((f) => f.team === 1 && f.alive)!; const l = Math.hypot(e.x - sim.player.x, e.z - sim.player.z); it.ax = (e.x - sim.player.x) / l; it.az = (e.z - sim.player.z) / l; } sim.step(DT, it); for (const f of sim.fighters) if (f.ai) seen.add(f.ai.mode); sim.events.length = 0; sim.player.hp = 100; }
+    for (let i = 0; i < 25 / DT && sim.state === 'active'; i++) { if (i % 240 === 0) { it.throwHeld = !it.throwHeld; const e = sim.fighters.find((f) => f.team === 1 && f.alive)!; const l = Math.hypot(e.x - sim.player.x, e.z - sim.player.z); it.ax = (e.x - sim.player.x) / l; it.az = (e.z - sim.player.z) / l; } sim.step(DT, it); for (const f of sim.fighters) if (f.ai) seen.add(f.ai.mode); sim.events.length = 0; sim.player.hp = 100; sim.player.invuln = 1; sim.player.stagger = 0; }
     for (const m of ['positioning', 'aiming', 'attacking', 'recovering']) expect(seen.has(m)).toBe(true);
     expect(seen.has('dodging') || seen.has('defending')).toBe(true);
   });
