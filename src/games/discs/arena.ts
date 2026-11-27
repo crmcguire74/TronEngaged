@@ -8,6 +8,10 @@ export interface PlatformDef {
   collapse?: { interval: number; down: number; phase: number };
   /** Alternate anchor used by topology shifts. */
   alt?: { x: number; y: number; z: number };
+  /** Free-roam floors: where this side spawns, relative to the platform centre (default: the centre). */
+  spawn?: { x: number; z: number };
+  /** A collision copy of a shared floor for the other side: walked on, never drawn. */
+  ghost?: boolean;
 }
 export interface BarrierDef {
   x: number; y: number; z: number; hx: number; hy: number; hz: number; yaw: number;
@@ -28,7 +32,7 @@ export interface ArenaSpec {
   moving?: boolean; movingBoth?: boolean; collapsing?: boolean; shifting?: boolean;
   barriers?: number; rotating?: number; volatile?: number; cover?: number; midwall?: boolean;
   sides?: number;
-  /** 'decks' (floating discs, the default), 'open' (one wide deck per side) or 'maze' (wide decks full of pillars). */ layout?: 'decks' | 'open' | 'maze';
+  /** 'decks' (floating discs, the default), 'open' (one wide deck per side), 'maze' (wide decks full of pillars) or 'roam' (one shared floor to hunt across). */ layout?: 'decks' | 'open' | 'maze' | 'roam';
 }
 
 export const HOP_GAP = 6.5;
@@ -38,6 +42,7 @@ const H: Record<string, number[]> = { flat: [0, 0, 0, 0, 0, 0], steps: [0, 1.4, 
 
 /** Assembles a playable disc arena from validated reusable components (PRD 8.4). */
 export function buildArena(spec: ArenaSpec, rng: Rng): ArenaDef {
+  if (spec.layout === 'roam') return roamArena(spec, rng);
   if (spec.layout === 'open' || spec.layout === 'maze') return wideArena(spec, rng);
   const platforms: PlatformDef[] = [];
   const pr = 4.6, er = 4.1, arcR = 11.5;
@@ -105,6 +110,27 @@ function wideArena(spec: ArenaSpec, rng: Rng): ArenaDef {
   return { sides: spec.sides ?? 8, radius: 29, ceiling: 18, floor: -9, platforms, barriers };
 }
 
+/**
+ * Free-roam arena: one floor shared by both sides, scattered with solid cover (pillars and wall slabs), so a fight is
+ * a hunt: move, take cover, flank, and be the last one standing. The rival side walks a collision copy of the same
+ * floor (it is never drawn), so every per-side rule in the simulation still holds. Spawns are at opposite ends.
+ */
+function roamArena(spec: ArenaSpec, rng: Rng): ArenaDef {
+  const R = 21, platforms: PlatformDef[] = [{ x: 0, y: 0, z: 0, r: R, side: 0, spawn: { x: 0, z: 14 } }, { x: 0, y: 0, z: 0, r: R, side: 1, spawn: { x: 0, z: -14 }, ghost: true }];
+  const barriers: BarrierDef[] = [], spawns = [[0, 14], [0, -14]], placed: [number, number, number][] = [];
+  const free = (x: number, z: number, r: number) => Math.hypot(x, z) < R - 2.5 && spawns.every(([sx, sz]) => Math.hypot(x - sx, z - sz) > 4.5) && placed.every(([px, pz, pr]) => Math.hypot(x - px, z - pz) > r + pr + 2.6);
+  // a rough ring of tall cover round the middle, a scatter beyond it, and a few long slabs to fight along
+  const n = (spec.cover ?? 0) + 11;
+  for (let k = 0, tries = 0; k < n && tries < 400; tries++) {
+    const ring = k < 6, a = ring ? (k / 6) * TAU + rng.range(-0.25, 0.25) : rng.range(0, TAU), rr = ring ? rng.range(5.5, 8) : rng.range(9, R - 3.5);
+    const x = Math.cos(a) * rr, z = Math.sin(a) * rr, slab = !ring && k % 3 === 0, hx = slab ? 2.6 : rng.range(0.7, 1.1), hz = slab ? 0.35 : hx, hy = slab ? 1.15 : rng.range(1.3, 2.2);
+    if (!free(x, z, Math.max(hx, hz))) continue;
+    barriers.push({ x, y: hy, z, hx, hy, hz, yaw: slab ? a + Math.PI / 2 + rng.range(-0.3, 0.3) : rng.range(0, TAU), hp: 0, pillar: true }); placed.push([x, z, Math.max(hx, hz)]); k++;
+  }
+  for (let i = 0; i < (spec.volatile ?? 0); i++) barriers.push({ x: (i - ((spec.volatile ?? 1) - 1) / 2) * 6, y: 2, z: rng.range(-2, 2), hx: 0.8, hy: 0.8, hz: 0.8, yaw: Math.PI / 4, hp: 1, volatile: true, spin: 0.7 });
+  return { sides: spec.sides ?? 10, radius: 29, ceiling: 18, floor: -9, platforms, barriers };
+}
+
 function gapOk(a: PlatformDef, b: PlatformDef, ax = a.x, ay = a.y, az = a.z, bx = b.x, by = b.y, bz = b.z) {
   return Math.hypot(ax - bx, az - bz) - a.r - b.r <= HOP_GAP && Math.abs(ay - by) <= HOP_RISE;
 }
@@ -124,13 +150,16 @@ export function validateArena(a: ArenaDef): string[] {
   }
   for (let i = 0; i < a.platforms.length; i++) for (let j = i + 1; j < a.platforms.length; j++) {
     const p = a.platforms[i], q = a.platforms[j];
+    if (p.ghost || q.ghost) continue; // a shared floor's collision copy sits on the floor by design
     if (Math.hypot(p.x - q.x, p.z - q.z) < p.r + q.r + 0.3 && Math.abs(p.y - q.y) < 1) issues.push(`platforms ${i}/${j} overlap`);
   }
   const apothemLimit = a.radius - 1.5;
   for (const p of a.platforms) { const m = p.move; if (Math.hypot(Math.abs(p.x) + (m?.ax ?? 0), Math.abs(p.z) + (m?.az ?? 0)) + p.r > apothemLimit) issues.push('platform outside arena bounds'); }
   for (const b of a.barriers) for (const p of a.platforms) {
     // maze pillars stand on decks by design: they only have to leave the spawn point at the centre clear
-    if (b.pillar) { if (Math.hypot(b.x - p.x, b.z - p.z) < 2.4 && Math.abs(b.y - p.y) < 3) issues.push('pillar on a spawn point'); continue; }
+    if (b.pillar) { const sx = p.x + (p.spawn?.x ?? 0), sz = p.z + (p.spawn?.z ?? 0); if (Math.hypot(b.x - sx, b.z - sz) < 2.4 && Math.abs(b.y - p.y) < 3) issues.push('pillar on a spawn point'); continue; }
+    // a free-roam floor carries its hazards on purpose; only its spawn points have to stay clear
+    if (p.spawn) { if (!b.orbit && Math.hypot(b.x - p.x - p.spawn.x, b.z - p.z - p.spawn.z) < 3.5 && b.y - b.hy < p.y + 2) issues.push('barrier on a roam spawn'); continue; }
     if (!b.orbit && Math.hypot(b.x - p.x, b.z - p.z) < p.r - 1 && b.y - b.hy < p.y + 2 && b.y + b.hy > p.y) issues.push('barrier blocks a spawn platform');
   }
   if (a.sides < 4 || a.sides > 12) issues.push('unsupported wall count');

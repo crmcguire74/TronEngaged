@@ -79,6 +79,7 @@ export class DiscSim {
   core: Core | null = null;
   /** Cutter tiers: rival discs leave a beam that cuts whoever crosses it; the player can only be cut once per window. */ private cutter = false; private cutCd = 0;
   /** Maze tiers: rivals take cover between throws (see ai.ts). */ maze = false;
+  /** Free-roam floor: both sides walk one shared floor (see arena.ts roamArena). */ roam = false;
   private nextId = 1; private ambientInterfere = 0;
   player!: Fighter;
 
@@ -98,7 +99,8 @@ export class DiscSim {
     if (cfg.modifiers.includes('core')) { const A = cfg.arena; this.core = { x: 0, y: 7.5, z: -(A.radius - 3.2), hp: 6, max: 6, rot: 0, spin: 0.6, gap: 1.5, flash: 0 }; }
     const home = this.platforms.findIndex((p) => p.side === 0);
     const P = this.platforms[home];
-    this.player = this.makeFighter(0, 'player', { ...ARCHETYPES.sentinel, label: 'Runner', hp: cfg.playerHp, speed: 6.2, throwSpeed: 32, discs: cfg.playerDiscs }, P.x, P.y, P.z, home);
+    this.roam = cfg.arena.platforms.some((p) => p.ghost); if (this.roam) this.maze = true; // cover-seeking applies on a shared floor too
+    this.player = this.makeFighter(0, 'player', { ...ARCHETYPES.sentinel, label: 'Runner', hp: cfg.playerHp, speed: 6.2, throwSpeed: 32, discs: cfg.playerDiscs }, P.x + (P.def.spawn?.x ?? 0), P.y, P.z + (P.def.spawn?.z ?? 0), home);
     this.player.isPlayer = true; this.player.maxShield = this.player.shield = cfg.playerShield; this.player.spawnT = 0;
     this.player.az = -1; this.player.yaw = Math.PI;
     this.spawnWave(0);
@@ -129,7 +131,7 @@ export class DiscSim {
     let best = 0; for (let i = 1; i < side.length; i++) if (counts[i] < counts[best]) best = i;
     const { p, i } = side[best];
     const a = this.rng.range(0, Math.PI * 2), rr = counts[best] ? p.r * 0.5 : 0;
-    const f = this.makeFighter(1, type, arch, p.x + Math.cos(a) * rr, p.y, p.z + Math.sin(a) * rr, i);
+    const sp = p.def.spawn, f = this.makeFighter(1, type, arch, p.x + (sp?.x ?? 0) + Math.cos(a) * rr * (sp ? 0.5 : 1), p.y, p.z + (sp?.z ?? 0) + Math.sin(a) * rr * (sp ? 0.5 : 1), i);
     if (this.cfg.enemyHpMul && this.cfg.enemyHpMul !== 1) { f.maxHp = Math.round(f.maxHp * this.cfg.enemyHpMul); f.hp = f.maxHp; }
     f.ai = initAi(this, f, clamp(difficulty + this.cfg.aiSkill, 0, 1));
     this.events.push({ type: 'spawn', id: f.id, kind: type, boss: !!arch.boss, summoned });
@@ -163,6 +165,12 @@ export class DiscSim {
       f.px = f.x; f.py = f.y; f.pz = f.z;
       const intent = f.isPlayer ? playerIntent : aiThink(this, f, dt);
       this.stepFighter(f, intent, dt);
+    }
+    // on a shared floor bodies are solid to each other: overlapping fighters are pushed apart
+    if (this.roam) for (let i = 0; i < this.fighters.length; i++) for (let j = i + 1; j < this.fighters.length; j++) {
+      const a = this.fighters[i], b = this.fighters[j]; if (!a.alive || !b.alive || a.falling || b.falling) continue;
+      const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), min = FIGHTER_R * 2.2; if (d >= min || d < 1e-4) continue;
+      const push = (min - d) / 2, nx = dx / d, nz = dz / d; a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
     }
     this.stepDiscs(dt); if (this.cutter) this.stepBeams(dt);
     if (this.discs.some((d) => d.dead)) this.discs = this.discs.filter((d) => !d.dead);

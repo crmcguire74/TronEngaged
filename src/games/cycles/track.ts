@@ -8,7 +8,8 @@ export interface TrackSpec { seed: number; closed: boolean; radius: number; wobb
   /** Closed circuits: number of inward bends (0 = plain oval), how deep they cut (0..0.5), and how far the loop is stretched. */ lobes?: number; depth?: number; stretch?: number;
   /** Rolling terrain: crest-to-dip height in metres and how many crests the lap carries. Smooth, unlike `elevation`. */ hills?: number; hillCount?: number;
   /** Trackside sections to build: enclosed tunnels, elevated bridge spans, and city canyons walled by towers. */ tunnels?: number; bridges?: number; canyons?: number;
-  /** Corner banking: peak cross-slope (rise per metre of lateral offset) the outside of a corner is lifted by. */ bank?: number }
+  /** Corner banking: peak cross-slope (rise per metre of lateral offset) the outside of a corner is lifted by. */ bank?: number;
+  /** Digital town: a street circuit traced round a carved grid of city blocks (right-angle corners), `town` = block size in metres. */ town?: number }
 export interface Track {
   spec: TrackSpec; closed: boolean; n: number; step: number; length: number; width: number;
   x: Float32Array; y: Float32Array; z: Float32Array; tx: Float32Array; tz: Float32Array; curv: Float32Array;
@@ -26,8 +27,9 @@ export function inFeature(t: Track, i: number, kind: FeatureKind) {
 function catmull(p0: number, p1: number, p2: number, p3: number, t: number) { const t2 = t * t, t3 = t2 * t; return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3); }
 
 function generate(spec: TrackSpec, wobble: number, relax = 1): Track {
-  const rng = new Rng(spec.seed), lobes = spec.closed ? spec.lobes ?? 0 : 0, depth = (spec.depth ?? 0) * relax; const K = Math.max(spec.knots, lobes * 5); const cx: number[] = [], cy: number[] = [], cz: number[] = [];
-  if (spec.closed) {
+  const rng = new Rng(spec.seed), lobes = spec.closed ? spec.lobes ?? 0 : 0, depth = (spec.depth ?? 0) * relax; let K = Math.max(spec.knots, lobes * 5); const cx: number[] = [], cy: number[] = [], cz: number[] = [];
+  if (spec.closed && spec.town) townLoop(spec, rng, cx, cy, cz);
+  else if (spec.closed) {
     // lobes pull the loop inward at intervals, giving hairpins, esses and straights instead of one long bend
     const stretch = spec.stretch ?? 1, sx = rng.range(0.85, 1.3) * stretch, sz = rng.range(0.85, 1.3) / Math.sqrt(stretch), phase = rng.range(0, TAU);
     for (let i = 0; i < K; i++) {
@@ -39,6 +41,7 @@ function generate(spec: TrackSpec, wobble: number, relax = 1): Track {
     const L = spec.length ?? 1400, seg = L / (K - 1); let x = 0;
     for (let i = 0; i < K; i++) { if (i > 1) x += rng.range(-1, 1) * seg * wobble * 1.1; cx.push(x); cz.push(i * seg); cy.push(i < 2 ? 0 : spec.elevation * rng.range(-1, 1)); }
   }
+  if (spec.closed && spec.town) K = cx.length;
   // dense sampling, then resample at an even ~2 m arc-length spacing
   const dense: number[] = []; const segs = spec.closed ? K : K - 1, SUB = 40;
   const at = (i: number) => (spec.closed ? (i + K) % K : Math.max(0, Math.min(K - 1, i)));
@@ -91,6 +94,38 @@ function generate(spec: TrackSpec, wobble: number, relax = 1): Track {
  * Lays out the built sections round a lap: enclosed tunnels, elevated bridge spans and tower-walled city canyons.
  * They never overlap, never sit on the start straight, and are only placed where the ribbon has room for them.
  */
+/**
+ * Street circuit for a digital town: a 4x3 grid of blocks with two to four cells carved out of its edge (only cells
+ * that keep the shape in one piece), and the loop traced round what is left, so every corner is a right angle at a
+ * street junction. Corners are chamfered by a few metres so the spline rounds them into a rideable turn rather than
+ * overshooting, and long straights carry intermediate points so they stay straight.
+ */
+function townLoop(spec: TrackSpec, rng: Rng, cx: number[], cy: number[], cz: number[]) {
+  const B = spec.town!, NX = 4, NZ = 3, on: boolean[][] = Array.from({ length: NX }, () => Array(NZ).fill(true));
+  const connected = () => { const seen = new Set<string>(); let start: [number, number] | null = null; let count = 0; for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) if (on[i][j]) { count++; start ??= [i, j]; }
+    if (!start) return false; const q = [start]; seen.add(start.join()); while (q.length) { const [i, j] = q.pop()!; for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const u = i + a, v = j + b; if (u >= 0 && v >= 0 && u < NX && v < NZ && on[u][v] && !seen.has(u + ',' + v)) { seen.add(u + ',' + v); q.push([u, v]); } } } return seen.size === count; };
+  // the outline must stay a simple loop: a removal is kept only if the rest is one piece with no holes (edge cells only)
+  const carve = rng.int(2, 4);
+  for (let k = 0, tries = 0; k < carve && tries < 60; tries++) { const i = rng.int(0, NX - 1), j = rng.int(0, NZ - 1); if (!on[i][j] || (i > 0 && i < NX - 1 && j > 0 && j < NZ - 1)) continue; on[i][j] = false; if (!connected() || on.flat().filter(Boolean).length < 6) { on[i][j] = true; continue; } k++; }
+  // directed boundary edges (counter-clockwise round the filled cells), chained into a polygon
+  const edges = new Map<string, [number, number]>();
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) if (on[i][j]) {
+    const f = (u: number, v: number) => u >= 0 && v >= 0 && u < NX && v < NZ && on[u][v];
+    if (!f(i, j - 1)) edges.set(`${i},${j}`, [i + 1, j]); if (!f(i + 1, j)) edges.set(`${i + 1},${j}`, [i + 1, j + 1]);
+    if (!f(i, j + 1)) edges.set(`${i + 1},${j + 1}`, [i, j + 1]); if (!f(i - 1, j)) edges.set(`${i},${j + 1}`, [i, j]);
+  }
+  const first = edges.keys().next().value as string; const poly: [number, number][] = []; let cur = first;
+  for (let g = 0; g < 64; g++) { const [a, b] = cur.split(',').map(Number); poly.push([a, b]); const nxt = edges.get(cur)!; cur = nxt.join(','); if (cur === first) break; }
+  // keep only real corners, then chamfer each one and fill long sides
+  const pts = poly.filter((p, i) => { const a = poly[(i - 1 + poly.length) % poly.length], b = poly[(i + 1) % poly.length]; return (p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0]) !== 0; });
+  const ox = (NX * B) / 2, oz = (NZ * B) / 2, ch = Math.min(26, B * 0.24), L = pts.length;
+  for (let i = 0; i < L; i++) {
+    const p = pts[i], q = pts[(i + 1) % L], px = p[0] * B - ox, pz = p[1] * B - oz, qx = q[0] * B - ox, qz = q[1] * B - oz, len = Math.hypot(qx - px, qz - pz), ux = (qx - px) / len, uz = (qz - pz) / len;
+    const n = Math.max(1, Math.round((len - 2 * ch) / 48));
+    for (let k = 0; k <= n; k++) { const d = ch + ((len - 2 * ch) * k) / n; cx.push(px + ux * d); cz.push(pz + uz * d); cy.push(0); }
+  }
+}
+
 function placeFeatures(t: Track, spec: TrackSpec, rng: Rng): TrackFeature[] {
   const out: TrackFeature[] = []; const n = t.n, step = t.step;
   const want: [FeatureKind, number, number][] = [ // kind, count, length in metres

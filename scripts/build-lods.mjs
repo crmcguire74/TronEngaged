@@ -32,7 +32,7 @@ const JOBS = [
   ['vehicles/enemies/cycle-wraith.glb', 0.2, 0.012], ['vehicles/enemies/cycle-argon.glb', 0.22, 0.012],
   ['vehicles/enemies/cycle-moto.glb', 0.22, 0.012], ['vehicles/enemies/cycle-agile.glb', 0.2, 0.012],
   ['vehicles/player/cycle-flynn.glb', 0.2, 0.012], ['vehicles/player/cycle-azure.glb', 0.22, 0.012],
-  ['vehicles/player/cycle-violet.glb', 0.22, 0.012],
+  ['vehicles/player/cycle-violet.glb', 0.22, 0.012], ['vehicles/enemies/cycle-monolith.glb', 0.25, 0.012],
   // riders: a rival on a machine shows a head and shoulders, and a disc rival stands 10-25 m off. Skin weights survive.
   // Their clips are dropped too: the game drives a LOD rider with the full model's clips, which bind by bone name.
   ['characters/player/runner-azure.glb', 0.28, 0.008, null, true], ['characters/player/runner-cobalt.glb', 0.28, 0.008, null, true],

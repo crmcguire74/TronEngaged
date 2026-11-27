@@ -9,9 +9,9 @@ import { cosmetic } from '../../progression/rewards';
 import { GloveHand } from '../../engine/hands';
 import { HoloGauge, holoFrame } from './holo';
 
-export const CYCLE_COLORS: Record<string, number> = { blade: 0x4fe3ff, azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0, argon: 0x5affd8, moto: 0xff8a3c, agile: 0xc8ff3c, flynn: 0xff2f4f };
+export const CYCLE_COLORS: Record<string, number> = { monolith: 0xff9a2e, blade: 0x4fe3ff, azure: 0x4fe3ff, ember: 0xff5a36, jade: 0x45ff9a, violet: 0xb56bff, wraith: 0xffd23c, bulwark: 0xff4fa0, argon: 0x5affd8, moto: 0xff8a3c, agile: 0xc8ff3c, flynn: 0xff2f4f };
 /** Every rival model, in the order riders are assigned them. */
-export const RIVAL_MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'argon', 'moto', 'agile', 'flynn'];
+export const RIVAL_MODELS = ['ember', 'monolith', 'wraith', 'jade', 'bulwark', 'violet', 'argon', 'moto', 'agile', 'flynn'];
 export const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 export const playerTrail = (ctx: Ctx) => cosmetic('trail:' + ctx.settings.trail)?.color ?? 0x4fe3ff;
 /**
@@ -30,12 +30,12 @@ const FIT: Record<string, { s: number; y: number; turn: number; x?: number; z?: 
   flynn: { s: 8.97, y: 0, turn: Math.PI },
 };
 /** Where the seated rider sits on a machine whose seat differs from the supplied models' (metres, machine space). */
-const SEAT: Record<string, [number, number, number]> = { blade: [0, -0.11, -0.16], ember: [0, 0.1, -0.3], moto: [0, 0.1, -0.55] };
+const SEAT: Record<string, [number, number, number]> = { blade: [0, -0.11, -0.16], ember: [0, 0.1, -0.3], moto: [0, 0.1, -0.55], monolith: [0, 0.18, 0.18] };
 /** Rider for each machine. The one-wheel 'bulwark' is a sealed pod and runs without a visible rider. */
-const RIDER: Record<string, string> = { blade: 'char:azure', azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson', agile: 'char:ivory', flynn: 'char:cobalt' };
+const RIDER: Record<string, string> = { monolith: 'char:crimson', blade: 'char:azure', azure: 'char:azure', violet: 'char:cobalt', jade: 'char:ivory', ember: 'char:crimson', wraith: 'char:cobalt', argon: 'char:ivory', moto: 'char:crimson', agile: 'char:ivory', flynn: 'char:cobalt' };
 // rivals bring their light copies (machine and rider); the player's own machine never needs one
 export const cycleAssets = (models: string[], skin: string) => [...new Set(models.flatMap((m, i) => ['cycle:' + m, RIDER[m], ...(i > 0 ? ['lod:' + m, RIDER[m] && 'lod' + RIDER[m], RIDER[m] && 'lod2' + RIDER[m]] : [])]).concat(['char:' + skin, COCKPIT, 'hands']).filter((k): k is string => !!k && (!k.startsWith('lod:') || LOD_MODELS.has(k.slice(4)))))];
-const LOD_MODELS = new Set(['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet']);
+const LOD_MODELS = new Set(['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet', 'monolith']);
 /** The cockpit model the first-person view is built from (scripts/blender/build_cockpit_v5.py). */
 const COCKPIT = 'cockpit5';
 /** Rider eye point relative to the cycle origin (metres): x right-handed, y up, z forward. */

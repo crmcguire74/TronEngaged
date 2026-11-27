@@ -109,6 +109,13 @@ export function aiThink(sim: DiscSim, f: Fighter, dt: number): DiscIntent {
   ai.moveT -= dt;
   if (ai.moveT <= 0) {
     const a = sim.rng.range(0, Math.PI * 2), r = sim.rng.range(0, p.r * 0.62); ai.tx = Math.cos(a) * r; ai.tz = Math.sin(a) * r; ai.moveT = sim.rng.range(0.7, 2.2) / (0.6 + arch.speed * 0.12);
+    // free roam: hold a fighting range from the player (8-16 m, closer for the skilled), work round to flank, and
+    // keep clear of other rivals, so the pack spreads out across the floor instead of walking up in a line
+    if (sim.roam) { const P = sim.player; let best = -1e9;
+      for (let k = 0; k < 10; k++) { const aa = sim.rng.range(0, Math.PI * 2), rr = sim.rng.range(0, p.r * 0.85), hx = p.x + Math.cos(aa) * rr, hz = p.z + Math.sin(aa) * rr, dp = Math.hypot(hx - P.x, hz - P.z);
+        let sc = -Math.abs(dp - (15 - 5 * ai.skill)) - Math.hypot(hx - f.x, hz - f.z) * 0.15;
+        for (const o of sim.fighters) if (o !== f && o.alive && o.team === 1) sc -= Math.max(0, 6 - Math.hypot(hx - o.x, hz - o.z)) * 1.2;
+        if (sc > best) { best = sc; ai.tx = hx - p.x; ai.tz = hz - p.z; } } }
     // in a maze a rival hides between throws: of a few spots on its deck, it takes one the player cannot see, and
     // steps out of it to throw (attacking clears the hold below)
     if (sim.maze && ai.cooldown > 0.6) { const P = sim.player; for (let k = 0; k < 6; k++) { const aa = sim.rng.range(0, Math.PI * 2), rr = sim.rng.range(p.r * 0.2, p.r * 0.8), hx = Math.cos(aa) * rr, hz = Math.sin(aa) * rr; if (sim.blocked(P.x, P.y + 1.3, P.z, p.x + hx, p.y + 1.3, p.z + hz)) { ai.tx = hx; ai.tz = hz; ai.moveT *= 1.6; break; } } }

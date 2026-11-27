@@ -16,6 +16,7 @@ export const VEHICLES: Record<string, VehicleStats & { label: string; blurb: str
   // near the top end but lazy to turn and slow to build speed. Without the trade they were simply upgrades, and the
   // field they were dropped into got quicker across the board.
   agile: { label: 'Agile', blurb: 'Corners best on the grid, slowest down a straight', top: 57.5, accel: 27, handling: 1.2 },
+  monolith: { label: 'Monolith', blurb: 'Enclosed shell: planted in the corners, strong down a straight', top: 63.5, accel: 25.5, handling: 0.98 },
   flynn: { label: "Flynn's", blurb: 'Big top end, heavy steering and a slow build', top: 64.5, accel: 23.5, handling: 0.88 },
 };
 export interface RaceIntent { steer: number; accel: number; brake: number; boost: boolean; ability: boolean; /** rivals only: fire a stun pulse */ pulse?: boolean; /** disc tiers: hurl a disc at the rider ahead */ disc?: boolean }

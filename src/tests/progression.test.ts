@@ -16,8 +16,8 @@ import { CombatSim } from '../games/cycles/combat';
 import { runCombatBot, runDiscBot } from './bots';
 
 describe('tier configuration', () => {
-  it('ships 36 authored tiers per primary game with sequential ids', () => {
-    expect(DISC_TIERS.length).toBe(36); expect(CYCLE_TIERS.length).toBe(36); expect(COMBAT_TIERS.length).toBe(18); expect(RACE_TIERS.length).toBe(18);
+  it('ships the authored tiers for each game with sequential ids', () => {
+    expect(DISC_TIERS.length).toBe(42); expect(CYCLE_TIERS.length).toBe(42); expect(COMBAT_TIERS.length).toBe(21); expect(RACE_TIERS.length).toBe(21);
     DISC_TIERS.forEach((t, i) => { expect(t.id).toBe(i + 1); expect(t.mode).toBe('discs'); }); CYCLE_TIERS.forEach((t, i) => { expect(t.id).toBe(i + 1); expect(t.mode).toBe(i % 2 ? 'cycle-race' : 'cycle-combat'); });
   });
   it('every enemy type referenced by a tier exists, and bosses have authored phases', () => {

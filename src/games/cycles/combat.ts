@@ -92,6 +92,15 @@ export class CombatSim {
       // no arrows on these: at surge speed a rider would fly clean over the deck
       for (const [rx, rz, dir] of [[-off, 3, 0], [off, -3, 2], [3, off, 3], [-3, -off, 1]] as const) this.ramps.push({ x: rx, z: rz, dir, hw: 2.6, len: 6 });
     }
+    // two levels: a long raised deck down each side of the arena, with the grid running beneath and between them. A
+    // rider can fight on either level, pass under a deck, ride off an edge to drop back down, or take a ramp up: two
+    // in the centre strip launch outward onto the decks and two at the outer edge launch inward.
+    if (cfg.modifiers.includes('two-level')) {
+      const hx = Math.round(H * 0.28), hz = Math.round(H * 0.62), cxo = Math.round(H * 0.2) + hx;
+      this.decks.push({ x: -cxo, z: 0, hx, hz }, { x: cxo, z: 0, hx, hz });
+      const zr = Math.round(hz * 0.45), edge = Math.round(H * 0.9);
+      for (const [rx, rz, dir] of [[3, zr, 0], [-3, -zr, 2], [edge, -zr, 2], [-edge, zr, 0]] as const) { this.ramps.push({ x: rx, z: rz, dir, hw: 2.6, len: 6 }); } // no arrows: at surge speed a rider would clear the deck
+    }
     // jump ramps: a pinwheel of four round the centre, each launching along the circle, clear of the spawn lanes
     if (cfg.modifiers.includes('ramps')) { const o = Math.round(H * 0.42); this.ramps.push({ x: o, z: o, dir: 2, hw: 2.6, len: 6 }, { x: -o, z: o, dir: 3, hw: 2.6, len: 6 }, { x: -o, z: -o, dir: 0, hw: 2.6, len: 6 }, { x: o, z: -o, dir: 1, hw: 2.6, len: 6 });
       for (const rp of this.ramps.slice(-4)) { const [ddx, ddz] = DIRS[rp.dir]; this.arrows.push({ x: rp.x - ddx * 9, z: rp.z - ddz * 9, dir: rp.dir, hw: 2.2, len: 9 }); } }

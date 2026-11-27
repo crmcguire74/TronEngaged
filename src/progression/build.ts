@@ -16,7 +16,7 @@ export function buildDiscArena(t: TierDefinition, seed: number): ArenaDef {
     collapsing: has(t, 'collapsing') || !!t.params.collapseLater, shifting: (has(t, 'shifting') || has(t, 'rapid-shift') || !!t.params.shiftCapable) && relax < 1,
     barriers: has(t, 'barriers') ? num(t, 'barriers', 2) : 0, rotating: has(t, 'rotating-shields') ? num(t, 'rotating', 1) : 0,
     volatile: has(t, 'volatile') ? num(t, 'volatile', 2) : 0, cover: has(t, 'cover') ? 1 : 0, midwall: has(t, 'midwall'),
-    layout: has(t, 'maze') ? 'maze' : has(t, 'open-floor') ? 'open' : 'decks',
+    layout: has(t, 'roam') ? 'roam' : has(t, 'maze') ? 'maze' : has(t, 'open-floor') ? 'open' : 'decks',
   }, new Rng(seed));
   // validated before the player enters; relax decorative complexity if a generated layout fails
   for (let relax = 0; relax < 3; relax++) { const a = mk(relax); if (!validateArena(a).length) return a; }
@@ -37,13 +37,13 @@ export function buildDiscConfig(t: TierDefinition, diff: DifficultyId, seedSalt 
   };
 }
 
-const MODELS = ['ember', 'wraith', 'jade', 'bulwark', 'violet', 'agile', 'argon', 'flynn', 'moto'];
+const MODELS = ['ember', 'monolith', 'wraith', 'jade', 'bulwark', 'violet', 'agile', 'argon', 'flynn', 'moto'];
 /** Machines a Combat tier fields, in the order riders are assigned them. */
 export function combatRivalModels(t: TierDefinition): string[] {
   const out: string[] = []; for (const e of t.enemies) for (let i = 0; i < e.count; i++) out.push(MODELS[out.length % MODELS.length]);
   return out;
 }
-const RACE_POOL = ['ember', 'agile', 'argon', 'wraith', 'flynn', 'moto', 'jade', 'bulwark', 'violet', 'azure'];
+const RACE_POOL = ['ember', 'monolith', 'agile', 'argon', 'wraith', 'flynn', 'moto', 'jade', 'bulwark', 'violet', 'azure'];
 /**
  * Machines a Race tier fields. The roster is large enough now that preloading all of it on every event would cost
  * tens of megabytes, so the sessions ask for exactly the models that will be on the grid.
@@ -68,7 +68,7 @@ export function buildRaceConfig(t: TierDefinition, diff: DifficultyId, playerMod
     lobes: num(t, 'lobes', 2 + ((t.id + stage) % 3)), depth: num(t, 'depth', 0.3 + Math.min(0.12, t.id * 0.006)), stretch: num(t, 'stretch', 1 + ((t.id * 7 + stage * 3) % 5) * 0.14),
     // terrain and built sections: rolling crests, banked corners, and tunnels / bridges / city canyons round the lap
     hills: num(t, 'hills'), hillCount: num(t, 'hillCount', 3) + (stage % 2), bank: num(t, 'bank'),
-    tunnels: num(t, 'tunnels'), bridges: num(t, 'bridges'), canyons: num(t, 'canyons') });
+    tunnels: num(t, 'tunnels'), bridges: num(t, 'bridges'), canyons: num(t, 'canyons'), town: num(t, 'town') || undefined });
   const e = t.enemies[0]; const rivals = []; const models = raceRivalModels(t, playerModel);
   // the early tiers (to 14) had rivals that a player could lap after one light wall: their skill gets a floor that
   // fades out by tier 14, so the first races are still beatable but are races

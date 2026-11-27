@@ -9,7 +9,7 @@ and in VR (WebXR):
 - **Light Cycles — Racing** — fluid steering, drifting, boost and checkpoints over hills, through bores, across
   suspension spans and down tower canyons; seven race formats and an air interceptor.
 
-36 authored tiers per game (72 total), endless seeded modes, four difficulties, local save.
+42 authored tiers per game (84 total), endless seeded modes, four difficulties, local save.
 
 Every authored tier has three-star mastery: the clear, plus two skill goals that point at what the mode rewards
 (Disc Arena: take little damage, play ricochets and parries; Combat: trap rivals on your wall, ride close calls; Racing:
@@ -17,7 +17,11 @@ win or ride clean, and take a rival down or keep off the rails). Goals show on t
 
 Disc tiers rotate three fight-changing systems through the ladder: **Rally** (clean exchanges make your throws faster
 and harder until you take a hit), **Power nodes** (Split, Pierce and Mend on your other decks) and **Core breach** (a
-shielded core behind the rival line whose turning gap is a second way to win). Cycle events open with every rider
+shielded core behind the rival line whose turning gap is a second way to win). Some tiers drop the decks altogether:
+**Open Grid** arenas are one floor shared with the rivals and full of solid cover, a hunt to be the last one standing
+(tiers 9, 13, 18, 24 and 37-42). Racing has **digital towns** (street circuits traced round city blocks, right-angle
+junctions, towers both sides) and Combat has **two-level arenas** (a raised deck down each side, ridden on or under,
+reached by ramps). Cycle events open with every rider
 igniting their machine out of a light baton; in a headset it forms around your own hands when you squeeze.
 
 > Built from `TronPRD.pdf`. This is a personal, non-commercial fan build: it uses the Tron name and the supplied Tron
@@ -111,6 +115,8 @@ These models are built by Blender scripts (shared helpers in `scripts/blender/ki
 | `build_hauler.py` | `hauler.glb` — the Overwatch Hauler that stands over the Outlands events |
 | `build_arena_kit.py` | `arena-stand.glb`, `arena-pylon.glb` — the stadium around the cycle grid |
 | `build_start_gantry.py` | `start-gantry.glb` — race start and finish: raked blade pylons and a wedge beam carrying twelve start lamps, which run red through the countdown and flash green on GO. About 1.6k triangles, scaled to each track's width |
+| `build_cycle_monolith.py` | `cycle-monolith.glb` — "Monolith": one enclosed shell over both wheels, lit rings set into each flank and a long flank strip, rider low on top. A rival machine and a player unlock. About 16k triangles, 6k in its distance copy |
+| `build_sentry.py` | `sentry.glb` — the race hazard: a hovering track sentry with a red waist ring, swept fins and a scan lens. About 1k triangles |
 | `build_cycles.py` | `cycle-bulwark.glb` — ring-wheel rival cycle (`cycle-lancer.glb` is also built but no longer shipped) |
 
 The scripts run either inside Blender or against the `bpy` module, which is the quicker path in CI:

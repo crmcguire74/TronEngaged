@@ -9,13 +9,13 @@ export const ASSET_PATHS: Record<string, string> = {
   'cycle:blade': 'vehicles/player/cycle-blade.glb', 'cycle:azure': 'vehicles/player/cycle-azure.glb', 'cycle:violet': 'vehicles/player/cycle-violet.glb', 'cycle:jade': 'vehicles/enemies/cycle-jade.glb', 'cycle:ember': 'vehicles/enemies/cycle-ember.glb',
   'cycle:wraith': 'vehicles/enemies/cycle-wraith.glb', 'cycle:bulwark': 'vehicles/enemies/cycle-bulwark.glb',
   'cycle:argon': 'vehicles/enemies/cycle-argon.glb', 'cycle:moto': 'vehicles/enemies/cycle-moto.glb',
-  'cycle:agile': 'vehicles/enemies/cycle-agile.glb', 'cycle:flynn': 'vehicles/player/cycle-flynn.glb',
+  'cycle:monolith': 'vehicles/enemies/cycle-monolith.glb', 'cycle:agile': 'vehicles/enemies/cycle-agile.glb', 'cycle:flynn': 'vehicles/player/cycle-flynn.glb',
   cockpit: 'vehicles/player/cockpit.glb', cockpit2: 'vehicles/player/cockpit-v2.glb', cockpit3: 'vehicles/player/cockpit-v3.glb', cockpit4: 'vehicles/player/cockpit-v4.glb', cockpit5: 'vehicles/player/cockpit-v5.glb', console: 'vehicles/player/cockpit-console.glb', stand: 'environments/cycle-arenas/stand.glb', pylon: 'environments/cycle-arenas/pylon.glb', arena: 'environments/cycle-arenas/lightcycle-arena.glb', craft: 'vehicles/air/patrol-craft.glb', drone: 'vehicles/air/drone.glb', carrier: 'vehicles/air/carrier.glb', hauler: 'vehicles/air/hauler.glb', recognizer: 'vehicles/air/recognizer.glb', jet: 'vehicles/air/light-jet.glb',
   'disc:azure': 'weapons/discs/disc-azure.glb', 'disc:ivory': 'weapons/discs/disc-ivory.glb', 'disc:crimson': 'weapons/discs/disc-crimson.glb', 'disc:identity': 'weapons/discs/disc-identity.glb', sword: 'weapons/melee/arc-sword.glb',
   hands: 'characters/player/glove-hands.glb', pedestal: 'environments/disc-arenas/pedestal.glb', coliseum: 'environments/disc-arenas/coliseum.glb', frame: 'environments/disc-arenas/arena-frame.glb', gantry: 'environments/cycle-arenas/start-gantry.glb', sentry: 'environments/cycle-arenas/sentry.glb', city: 'environments/cycle-arenas/city.glb',
 };
 /** Low-detail copies built by scripts/build-lods.mjs (geometry only: they borrow the full model's materials). */
-for (const m of ['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet']) ASSET_PATHS['lod:' + m] = ASSET_PATHS['cycle:' + m].replace(/\.glb$/, '.lod.glb');
+for (const m of ['ember', 'jade', 'wraith', 'argon', 'moto', 'agile', 'flynn', 'azure', 'violet', 'monolith']) ASSET_PATHS['lod:' + m] = ASSET_PATHS['cycle:' + m].replace(/\.glb$/, '.lod.glb');
 for (const m of ['azure', 'cobalt', 'ivory', 'crimson']) { ASSET_PATHS['lodchar:' + m] = ASSET_PATHS['char:' + m].replace(/\.glb$/, '.lod.glb'); ASSET_PATHS['lod2char:' + m] = ASSET_PATHS['char:' + m].replace(/\.glb$/, '.lod2.glb'); }
 /** The light rider for a character key, when it has been loaded; otherwise the key itself. */
 export const lodChar = (assets: { has(k: string): boolean }, key: string) => (key.startsWith('char:') && assets.has('lod' + key) ? 'lod' + key : key);

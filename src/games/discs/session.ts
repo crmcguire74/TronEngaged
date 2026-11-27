@@ -180,7 +180,7 @@ export class DiscSession extends BaseSession {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(p.r - 0.12, 0.06, 6, 72), new THREE.MeshBasicMaterial({ color: col })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; root.add(ring);
       const surge = new THREE.Mesh(new THREE.CircleGeometry(p.r - 0.3, 48), new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); surge.rotation.x = -Math.PI / 2; surge.position.y = 0.06; root.add(surge);
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.9, 30, 12, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false })); beam.position.y = -17; root.add(beam);
-      W.add(root); this.pv.push({ root, ring, surge, sink: 0, beam });
+      if (!p.def.ghost) W.add(root); this.pv.push({ root, ring, surge, sink: 0, beam });
     });
     this.sim.barriers.forEach((_, i) => this.addBarrierView(i));
     this.sim.amps.forEach(() => this.addAmpView());

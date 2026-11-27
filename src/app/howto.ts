@@ -32,6 +32,7 @@ export function howToScreen(app: App, tier: TierDefinition): Screen {
     if (has('core')) know.push(['Rival core', 'A spinning core guards the back of the rival side. Thread a disc through the gap in its shell six times and every rival goes down with it.']);
     if (has('cutter')) know.push(['Cutter beams', 'Rival discs drag a blade of light. Crossing it cuts you. Shields do not stop it: move, dodge or hop.']);
     if (has('open-floor')) know.push(['Open floor', 'One wide deck a side and no hopping. Strafe to read the throws.']);
+    if (has('roam')) know.push(['Open Grid', 'No decks: one floor shared with the rivals, full of solid cover. Walk anywhere, use the pillars to break line of sight, flank, and be the last one standing. Bodies block each other, so do not let two of them corner you.']);
     if (has('maze')) know.push(['Techno maze', 'Pillars break up the floor and rivals hide behind them. Bank throws off the pillars, and use them as cover yourself.']);
   } else if (mode === 'cycle-combat') {
     goal = 'Be the last rider running. Every cycle leaves a solid light wall behind it.'; win = 'Every rival has crashed.'; lose = 'You hit a light wall, the arena boundary, an obstacle or a rival head-on.';
@@ -42,6 +43,7 @@ export function howToScreen(app: App, tier: TierDefinition): Screen {
     if (has('ion-lanes')) know.push(['Gold ion lanes', 'Ride along one (not across) for extra speed and a fast boost refill. Rivals get it too.']);
     if (has('discs')) { controls.push(['Throw a disc', pick('Q', 'Y', 'Reach over your shoulder, squeeze grip, swing forward and let go')]); know.push(['Discs', 'Your disc flies straight down your line and crashes the first rider it reaches. Walls stop discs, so a wall is also a shield. An alarm sounds when a rival disc is on your line: turn off it. Discs show on the map.']); }
     if (has('ramps') || has('decks')) know.push(['Jump ramps', 'Ride up a ramp to fly over walls. Gold boost arrows before a ramp throw you faster and further. Your wall has a gap where you flew.']);
+    if (has('two-level')) know.push(['Two levels', 'A raised deck runs down each side, with the grid beneath and between them. Ride on either level or under a deck. Ramps in the centre strip launch you outward onto a deck, ramps at the edges launch you inward. Walls only stop riders on their own level; ride off an edge to drop back down.']);
     if (has('decks')) know.push(['Raised deck', 'Jump onto the deck from an inward ramp. Walls on the deck and on the grid never touch. Ride off the edge and you drop back to the grid.']);
   } else {
     const f = String(tier.params.format ?? 'circuit');
